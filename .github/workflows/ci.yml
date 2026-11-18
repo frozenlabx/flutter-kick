@@ -1,0 +1,375 @@
+name: CI
+
+on:
+  push:
+    branches: [ main, '**' ]
+  pull_request:
+    branches: [ main ]
+  schedule:
+    # Run weekly on Sunday at midnight UTC
+    - cron: '0 0 * * 0'
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ----------------------------------------------------------------------------
+  # Job 1: Lint (ShellCheck & PSScriptAnalyzer)
+  # ----------------------------------------------------------------------------
+  lint:
+    name: Lint (${{ matrix.target }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: shell
+            os: ubuntu-latest
+          - target: powershell
+            os: windows-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Run ShellCheck on Unix Scripts
+        if: matrix.target == 'shell'
+        run: |
+          echo "=== Running ShellCheck ==="
+          shellcheck --version
+          shellcheck install.sh \
+                     unix/install.sh \
+                     unix/lib/*.sh \
+                     unix/scripts/*.sh \
+                     tests/*.sh
+
+      - name: Run PSScriptAnalyzer on Windows PowerShell Modules
+        if: matrix.target == 'powershell'
+        shell: pwsh
+        run: |
+          Write-Host "=== Installing PSScriptAnalyzer ===" -ForegroundColor Cyan
+          Install-Module -Name PSScriptAnalyzer -Force -Scope CurrentUser
+
+          Write-Host "=== Running PSScriptAnalyzer Analysis ===" -ForegroundColor Cyan
+          $issues = Invoke-ScriptAnalyzer -Path windows -Recurse -Severity Error
+          if ($issues) {
+              $issues | Format-Table -AutoSize
+              throw "PSScriptAnalyzer detected errors in PowerShell modules."
+          } else {
+              Write-Host "PSScriptAnalyzer passed with zero errors!" -ForegroundColor Green
+          }
+
+      - name: Upload Diagnostics Log on Failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lint-diag-${{ matrix.target }}
+          path: |
+            ~/.mobile-toolchain-setup.log
+            /tmp/.mobile-toolchain-setup.log
+            ${{ env.USERPROFILE }}/.mobile-toolchain-setup.log
+          if-no-files-found: ignore
+
+  # ----------------------------------------------------------------------------
+  # Job 2: Dry-Run Matrix (Ubuntu, macOS, Windows)
+  # ----------------------------------------------------------------------------
+  dry-run-matrix:
+    name: Dry-Run (${{ matrix.os }})
+    needs: lint
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      # Unix Validation
+      - name: Make Scripts Executable (Unix)
+        if: runner.os != 'Windows'
+        run: chmod +x install.sh unix/install.sh unix/lib/*.sh unix/scripts/*.sh tests/*.sh
+
+      - name: Run Comprehensive Test Suite (Unix)
+        if: runner.os != 'Windows'
+        run: ./tests/test_suite.sh
+
+      - name: Test Default Dry-Run Mode (Unix)
+        if: runner.os != 'Windows'
+        run: |
+          echo "=== Running ./unix/install.sh --default --dry-run ==="
+          ./unix/install.sh --default --dry-run
+
+      - name: Test Custom CLI Flags Parsing (Unix)
+        if: runner.os != 'Windows'
+        run: |
+          echo "=== Running Custom CLI Flags Dry-Run ==="
+          OUTPUT=$(./unix/install.sh --dry-run --ndk 28.0 --jdk 21 --gradle 8.10.2 --api "34,35" --flutter beta)
+          echo "$OUTPUT"
+
+          # Assertions on resolved configuration
+          echo "$OUTPUT" | grep -q "JDK Version            : 21" || (echo "JDK 21 not found in output" && exit 1)
+          echo "$OUTPUT" | grep -q "API 34,35" || (echo "API 34,35 not found in output" && exit 1)
+          echo "$OUTPUT" | grep -q "ndk;28.0.13004108" || (echo "Smart NDK resolution failed" && exit 1)
+          echo "$OUTPUT" | grep -q "gradle-8.10.2" || (echo "Gradle 8.10.2 not found in output" && exit 1)
+          echo "$OUTPUT" | grep -q "Flutter Channel/SDK    : beta" || (echo "Flutter beta not found in output" && exit 1)
+          echo "$OUTPUT" | grep -q "Dry run simulation finished successfully" || (echo "Dry run did not complete" && exit 1)
+
+      - name: Test Dry-Run Uninstallation (Unix)
+        if: runner.os != 'Windows'
+        run: ./unix/install.sh --uninstall --dry-run
+
+      # Windows Validation
+      - name: Test Default Dry-Run Mode (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          Write-Host "=== Running .\windows\install.ps1 -Default -DryRun ===" -ForegroundColor Cyan
+          .\windows\install.ps1 -Default -DryRun
+
+      - name: Test Custom CLI Flags Parsing (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          Write-Host "=== Running Custom CLI Flags Dry-Run ===" -ForegroundColor Cyan
+          $output = .\windows\install.ps1 -DryRun -Ndk "28.0" -Jdk "21" -Gradle "8.10.2" -Api "34,35" -Flutter "beta"
+          $outStr = $output -join "`n"
+          Write-Host $outStr
+
+          # Assertions on resolved configuration
+          if ($outStr -notmatch "JDK Version\s+:\s+21") { throw "JDK 21 not reflected in summary." }
+          if ($outStr -notmatch "API 34,35") { throw "API 34,35 not reflected in summary." }
+          if ($outStr -notmatch "ndk;28\.0\.13004108") { throw "Smart NDK 28.0 resolution failed." }
+          if ($outStr -notmatch "gradle-8\.10\.2") { throw "Gradle 8.10.2 not reflected in output." }
+          if ($outStr -notmatch "Flutter Channel/SDK\s+:\s+beta") { throw "Flutter beta not reflected in summary." }
+          if ($outStr -notmatch "Dry run simulation finished successfully") { throw "Dry-run did not complete." }
+
+      - name: Test Dry-Run Uninstallation (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          Write-Host "=== Running .\windows\install.ps1 -Uninstall -DryRun ===" -ForegroundColor Cyan
+          .\windows\install.ps1 -Uninstall -DryRun
+
+      - name: Upload Diagnostics Log on Failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dryrun-diag-${{ matrix.os }}
+          path: |
+            ~/.mobile-toolchain-setup.log
+            /tmp/.mobile-toolchain-setup.log
+            ${{ env.USERPROFILE }}/.mobile-toolchain-setup.log
+          if-no-files-found: ignore
+
+  # ----------------------------------------------------------------------------
+  # Job 3: Linux Distro Containers (Ubuntu 24.04, Fedora, Arch Linux)
+  # ----------------------------------------------------------------------------
+  linux-distro-containers:
+    name: Container (${{ matrix.name }})
+    needs: lint
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: ubuntu-24.04
+            image: 'ubuntu:24.04'
+            family: debian
+          - name: fedora-latest
+            image: 'fedora:latest'
+            family: fedora
+          - name: archlinux-latest
+            image: 'archlinux:latest'
+            family: arch
+    container:
+      image: ${{ matrix.image }}
+    steps:
+      - name: Bootstrap Minimal Container Image
+        run: |
+          echo "=== Bootstrapping Container Dependencies for ${{ matrix.name }} ==="
+          if command -v apt-get >/dev/null 2>&1; then
+              export DEBIAN_FRONTEND=noninteractive
+              apt-get update && apt-get install -y bash curl gawk git sudo procps
+          elif command -v dnf >/dev/null 2>&1; then
+              dnf install -y bash curl gawk git sudo findutils procps-ng
+          elif command -v pacman >/dev/null 2>&1; then
+              pacman -Sy --noconfirm archlinux-keyring || true
+              pacman -Syu --noconfirm --noprogressbar bash curl gawk git sudo coreutils procps-ng grep sed findutils which || true
+          fi
+
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Make Scripts Executable
+        run: chmod +x install.sh unix/install.sh unix/lib/*.sh unix/scripts/*.sh tests/*.sh
+
+      - name: Verify OS Detection & Default Dry-Run
+        run: |
+          echo "=== Testing ./unix/install.sh --default --dry-run on ${{ matrix.name }} ==="
+          OUTPUT=$(./unix/install.sh --default --dry-run)
+          echo "$OUTPUT"
+
+          # Verify distro family accurately detected
+          case "${{ matrix.family }}" in
+              debian)
+                  echo "$OUTPUT" | grep -qi -E "(debian|ubuntu)" || (echo "Debian/Ubuntu family not detected" && exit 1)
+                  ;;
+              fedora)
+                  echo "$OUTPUT" | grep -qi "fedora" || (echo "Fedora family not detected" && exit 1)
+                  ;;
+              arch)
+                  echo "$OUTPUT" | grep -qi "arch" || (echo "Arch family not detected" && exit 1)
+                  ;;
+          esac
+
+          # Verify prerequisite mapping
+          echo "$OUTPUT" | grep -q "Verifying system base prerequisites" || (echo "Prerequisites step missing" && exit 1)
+          echo "$OUTPUT" | grep -q "Dry run simulation finished successfully" || (echo "Dry run failed" && exit 1)
+
+      - name: Verify Custom Parameters in Container
+        run: |
+          echo "=== Testing Custom Flags in ${{ matrix.name }} ==="
+          OUTPUT=$(./unix/install.sh --dry-run --ndk 28.0 --jdk 21 --gradle 8.10.2 --api "34,35")
+          echo "$OUTPUT"
+          echo "$OUTPUT" | grep -q "ndk;28.0.13004108" || (echo "Smart NDK resolution failed" && exit 1)
+          echo "$OUTPUT" | grep -q "platforms;android-34" || (echo "API 34 parsing failed" && exit 1)
+          echo "$OUTPUT" | grep -q "platforms;android-35" || (echo "API 35 parsing failed" && exit 1)
+
+      - name: Upload Diagnostics Log on Failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: container-diag-${{ matrix.name }}
+          path: |
+            ~/.mobile-toolchain-setup.log
+            /tmp/.mobile-toolchain-setup.log
+          if-no-files-found: ignore
+
+  # ----------------------------------------------------------------------------
+  # Job 4: E2E Full Installation (Workflow Dispatch, Schedule, or Push to Main)
+  # ----------------------------------------------------------------------------
+  e2e-full-install:
+    name: E2E Full Install (${{ matrix.os }})
+    if: |
+      github.event_name == 'workflow_dispatch' ||
+      github.event_name == 'schedule' ||
+      (github.event_name == 'push' && github.ref == 'refs/heads/main')
+    needs: [dry-run-matrix, linux-distro-containers]
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      # Unix Live Full Install & Verification
+      - name: Make Scripts Executable (Unix)
+        if: runner.os != 'Windows'
+        run: chmod +x install.sh unix/install.sh unix/lib/*.sh unix/scripts/*.sh tests/*.sh
+
+      - name: Execute Full Headless Install (Unix)
+        if: runner.os != 'Windows'
+        run: |
+          echo "=== Executing Live Headless Setup ==="
+          ./unix/install.sh --default --yes
+
+      - name: Reload Environment and Verify Installed Toolchain (Unix)
+        if: runner.os != 'Windows'
+        run: |
+          echo "=== Reloading Shell Environment ==="
+          if [ -f "$HOME/.bashrc" ]; then source "$HOME/.bashrc"; fi
+          if [ -f "$HOME/.bash_profile" ]; then source "$HOME/.bash_profile"; fi
+          if [ -f "$HOME/.zshrc" ]; then source "$HOME/.zshrc"; fi
+
+          echo "=== Verifying Java ==="
+          java -version
+
+          echo "=== Verifying Gradle ==="
+          gradle -v
+
+          echo "=== Verifying Android ADB ==="
+          adb --version
+
+          echo "=== Verifying Flutter ==="
+          flutter --version
+
+      - name: Execute Full Uninstallation (Unix)
+        if: runner.os != 'Windows'
+        run: |
+          echo "=== Executing Full Uninstallation Routine ==="
+          ./unix/install.sh --uninstall --yes
+
+          # Verify marker blocks stripped
+          for rc in "$HOME/.zshrc" "$HOME/.bashrc" "$HOME/.bash_profile"; do
+              if [ -f "$rc" ]; then
+                  if grep -q "MOBILE_TOOLCHAIN_SETUP_START" "$rc"; then
+                      echo "ERROR: Marker block was not stripped from $rc"
+                      exit 1
+                  fi
+              fi
+          done
+          echo "Environment markers successfully stripped from all shell configurations."
+
+      # Windows Live Full Install & Verification
+      - name: Execute Full Headless Install (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          Write-Host "=== Executing Live Headless Setup ===" -ForegroundColor Cyan
+          .\windows\install.ps1 -Default -Yes
+
+      - name: Reload Environment and Verify Installed Toolchain (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          Write-Host "=== Reloading User Registry Environment ===" -ForegroundColor Cyan
+          $userPath = [System.Environment]::GetEnvironmentVariable("Path", "User")
+          $machinePath = [System.Environment]::GetEnvironmentVariable("Path", "Machine")
+          $env:Path = "$userPath;$machinePath"
+          $env:JAVA_HOME = [System.Environment]::GetEnvironmentVariable("JAVA_HOME", "User")
+          $env:ANDROID_HOME = [System.Environment]::GetEnvironmentVariable("ANDROID_HOME", "User")
+          $env:GRADLE_HOME = [System.Environment]::GetEnvironmentVariable("GRADLE_HOME", "User")
+
+          Write-Host "=== Verifying Java ===" -ForegroundColor Cyan
+          java -version
+
+          Write-Host "=== Verifying Gradle ===" -ForegroundColor Cyan
+          gradle -v
+
+          Write-Host "=== Verifying Android ADB ===" -ForegroundColor Cyan
+          adb --version
+
+          Write-Host "=== Verifying Flutter ===" -ForegroundColor Cyan
+          flutter --version
+
+      - name: Execute Full Uninstallation (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          Write-Host "=== Executing Full Uninstallation Routine ===" -ForegroundColor Cyan
+          .\windows\install.ps1 -Uninstall -Yes
+
+          # Verify User environment variables cleared
+          $jh = [System.Environment]::GetEnvironmentVariable("JAVA_HOME", "User")
+          $ah = [System.Environment]::GetEnvironmentVariable("ANDROID_HOME", "User")
+          $gh = [System.Environment]::GetEnvironmentVariable("GRADLE_HOME", "User")
+
+          if ($jh -or $ah -or $gh) {
+              throw "Environment variables were not cleanly removed from User registry."
+          }
+          Write-Host "Registry environment variables successfully cleared." -ForegroundColor Green
+
+      - name: Upload Diagnostics Log on Failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-diag-${{ matrix.os }}
+          path: |
+            ~/.mobile-toolchain-setup.log
+            /tmp/.mobile-toolchain-setup.log
+            ${{ env.USERPROFILE }}/.mobile-toolchain-setup.log
+          if-no-files-found: ignore

@@ -1,0 +1,11 @@
+# Logs
+*.log
+.mobile-toolchain-setup.log
+
+# Temporary and backup files
+*.bak.*
+*.tmp
+
+# OS Metadata
+.DS_Store
+Thumbs.db
