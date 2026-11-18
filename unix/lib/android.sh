@@ -141,7 +141,7 @@ install_android_sdk() {
     local sdk_root="${5:-}"
     local is_dry_run="${6:-false}"
     local is_verbose="${7:-0}"
-    [[ "$is_verbose" -eq 1 ]] && VERBOSE=1
+    [[ "$is_verbose" -eq 1 ]] && export VERBOSE=1
 
     log_step "Configuring Headless Android SDK"
 

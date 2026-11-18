@@ -23,7 +23,7 @@ install_flutter() {
     local macos_tools="${4:-${MACOS_IOS_TOOLS:-yes}}"
     local is_dry_run="${5:-false}"
     local is_verbose="${6:-0}"
-    [[ "$is_verbose" -eq 1 ]] && VERBOSE=1
+    [[ "$is_verbose" -eq 1 ]] && export VERBOSE=1
 
     log_step "Configuring Flutter SDK (${channel_arg})"
 

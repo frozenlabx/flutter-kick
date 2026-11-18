@@ -21,7 +21,7 @@ install_jdk() {
     local install_root="${2:-${DEFAULT_JDK_INSTALL_DIR:-${HOME}/.local/share/jdks}}"
     local is_dry_run="${3:-false}"
     local is_verbose="${4:-0}"
-    [[ "$is_verbose" -eq 1 ]] && VERBOSE=1
+    [[ "$is_verbose" -eq 1 ]] && export VERBOSE=1
 
     log_step "Installing / Verifying JDK ${target_ver}"
 
