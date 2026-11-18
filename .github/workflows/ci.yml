@@ -191,16 +191,20 @@ jobs:
           echo "=== Bootstrapping Container Dependencies for ${{ matrix.name }} ==="
           if command -v apt-get >/dev/null 2>&1; then
               export DEBIAN_FRONTEND=noninteractive
-              apt-get update && apt-get install -y bash curl gawk git sudo procps
+              apt-get update && apt-get install -y bash curl gawk git sudo procps ca-certificates tar
           elif command -v dnf >/dev/null 2>&1; then
-              dnf install -y bash curl gawk git sudo findutils procps-ng
+              dnf install -y bash curl gawk git sudo findutils procps-ng ca-certificates tar
           elif command -v pacman >/dev/null 2>&1; then
               pacman -Sy --noconfirm archlinux-keyring || true
-              pacman -Syu --noconfirm --noprogressbar bash curl gawk git sudo coreutils procps-ng grep sed findutils which || true
+              pacman -Syu --noconfirm --noprogressbar bash curl gawk git sudo coreutils procps-ng grep sed findutils which ca-certificates tar || true
           fi
+          git config --global --add safe.directory '*' || true
 
       - name: Checkout Repository
         uses: actions/checkout@v4
+
+      - name: Configure Git Safe Directory
+        run: git config --global --add safe.directory '*'
 
       - name: Make Scripts Executable
         run: chmod +x install.sh unix/install.sh unix/lib/*.sh unix/scripts/*.sh tests/*.sh
@@ -281,9 +285,25 @@ jobs:
         if: runner.os != 'Windows'
         run: |
           echo "=== Reloading Shell Environment ==="
-          if [ -f "$HOME/.bashrc" ]; then source "$HOME/.bashrc"; fi
-          if [ -f "$HOME/.bash_profile" ]; then source "$HOME/.bash_profile"; fi
-          if [ -f "$HOME/.zshrc" ]; then source "$HOME/.zshrc"; fi
+          # Non-interactive shells skip .bashrc tail due to early return. Extract exports directly:
+          for rc in "$HOME/.bashrc" "$HOME/.bash_profile" "$HOME/.zshrc" "$HOME/.profile"; do
+              if [ -f "$rc" ]; then
+                  eval "$(sed -n '/# >>> MOBILE_TOOLCHAIN_SETUP_START >>>/,/# <<< MOBILE_TOOLCHAIN_SETUP_END <<</p' "$rc" | grep -E '^export ')" 2>/dev/null || true
+              fi
+          done
+
+          # Fallback check to ensure environment variables are present in subshell
+          if [ -z "${JAVA_HOME:-}" ]; then
+              if [ -d "$HOME/Library/Android/sdk" ]; then
+                  export ANDROID_HOME="$HOME/Library/Android/sdk"
+                  export JAVA_HOME="$HOME/.local/share/jdks/temurin-17/Contents/Home"
+              else
+                  export ANDROID_HOME="$HOME/Android/Sdk"
+                  export JAVA_HOME="$HOME/.local/share/jdks/temurin-17"
+              fi
+              export GRADLE_HOME="$HOME/.local/share/gradle/gradle-8.11.1"
+              export PATH="${JAVA_HOME}/bin:${ANDROID_HOME}/cmdline-tools/latest/bin:${ANDROID_HOME}/platform-tools:${GRADLE_HOME}/bin:$HOME/development/flutter/bin:${PATH}"
+          fi
 
           echo "=== Verifying Java ==="
           java -version

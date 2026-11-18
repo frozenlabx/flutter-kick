@@ -6,7 +6,6 @@
 set -euo pipefail
 
 SCRIPT_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_ROOT="$(cd "${SCRIPT_LIB_DIR}/../.." && pwd)"
 
 if [[ -f "${SCRIPT_LIB_DIR}/ui.sh" ]]; then
     # shellcheck source=/dev/null
@@ -22,6 +21,7 @@ install_jdk() {
     local install_root="${2:-${DEFAULT_JDK_INSTALL_DIR:-${HOME}/.local/share/jdks}}"
     local is_dry_run="${3:-false}"
     local is_verbose="${4:-0}"
+    [[ "$is_verbose" -eq 1 ]] && VERBOSE=1
 
     log_step "Installing / Verifying JDK ${target_ver}"
 

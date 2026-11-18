@@ -6,6 +6,7 @@
 
 # Guard against multiple sourcing
 if [[ -n "${_UI_LIB_LOADED:-}" ]]; then
+    # shellcheck disable=SC2317
     return 0 2>/dev/null || exit 0
 fi
 _UI_LIB_LOADED=1
@@ -13,6 +14,7 @@ _UI_LIB_LOADED=1
 # ------------------------------------------------------------------------------
 # Terminal Color Setup (Respects NO_COLOR, TERM=dumb, non-tty)
 # ------------------------------------------------------------------------------
+# shellcheck disable=SC2034
 setup_colors() {
     if [[ -t 1 ]] && [[ -z "${NO_COLOR:-}" ]] && [[ "${TERM:-}" != "dumb" ]]; then
         CLR_RESET=$'\033[0m'

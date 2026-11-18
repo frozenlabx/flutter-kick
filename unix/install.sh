@@ -9,7 +9,6 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 CONFIG_DIR="${PROJECT_ROOT}/config"
 LIB_DIR="${SCRIPT_DIR}/lib"
-SCRIPTS_DIR="${SCRIPT_DIR}/scripts"
 
 # ------------------------------------------------------------------------------
 # Source Configuration and Libraries
@@ -206,11 +205,9 @@ detect_all
 # Resolve platform default paths
 if [[ "$OS_TYPE" == "macos" ]]; then
     ANDROID_HOME="${DEFAULT_ANDROID_HOME_MAC:-${HOME}/Library/Android/sdk}"
-    CMDLINE_URL="$CMDLINE_TOOLS_URL_MAC"
     JAVA_HOME_DEFAULT="${DEFAULT_JDK_INSTALL_DIR:-${HOME}/.local/share/jdks}/temurin-${JDK_VERSION}/Contents/Home"
 else
     ANDROID_HOME="${DEFAULT_ANDROID_HOME_LINUX:-${HOME}/Android/Sdk}"
-    CMDLINE_URL="$CMDLINE_TOOLS_URL_LINUX"
     JAVA_HOME_DEFAULT="${DEFAULT_JDK_INSTALL_DIR:-${HOME}/.local/share/jdks}/temurin-${JDK_VERSION}"
 fi
 FLUTTER_HOME="${DEFAULT_FLUTTER_HOME:-${HOME}/development/flutter}"
@@ -399,14 +396,18 @@ fi
 # ------------------------------------------------------------------------------
 # Step 6: Post-Installation Verification
 # ------------------------------------------------------------------------------
-log_step "6" "7" "Post-Installation Verification"
+run_post_install_verification() {
+    local is_dry_run="$1"
+    local gradle_ver="$2"
 
-if [[ "$DRY_RUN" == "true" ]]; then
-    log_dry_run "Verification: Would execute 'java -version'"
-    log_dry_run "Verification: Would execute 'gradle -v'"
-    log_dry_run "Verification: Would execute 'adb --version'"
-    log_dry_run "Verification: Would execute 'flutter doctor -v'"
-else
+    if [[ "$is_dry_run" == "true" ]]; then
+        log_dry_run "Verification: Would execute 'java -version'"
+        log_dry_run "Verification: Would execute 'gradle -v'"
+        log_dry_run "Verification: Would execute 'adb --version'"
+        log_dry_run "Verification: Would execute 'flutter doctor -v'"
+        return 0
+    fi
+
     printf "\n%s--- Toolchain Verification Summary ---%s\n" "${CLR_BOLD}${CLR_CYAN}" "${CLR_RESET}"
 
     # Ensure PATH contains all installed binaries
@@ -422,7 +423,7 @@ else
     fi
 
     # 2. Gradle check
-    if [[ "$CFG_GRADLE" != "skip" ]]; then
+    if [[ "$gradle_ver" != "skip" ]]; then
         if command -v gradle >/dev/null 2>&1; then
             local gradle_out
             gradle_out="$(gradle -v 2>&1 | grep -E '^Gradle [0-9]' || echo "Gradle ready")"
@@ -449,7 +450,10 @@ else
     else
         log_warn "Flutter executable not found in PATH."
     fi
-fi
+}
+
+log_step "6" "7" "Post-Installation Verification"
+run_post_install_verification "$DRY_RUN" "$CFG_GRADLE"
 
 # ------------------------------------------------------------------------------
 # Step 7: Completion and Next Steps

@@ -6,7 +6,6 @@
 set -euo pipefail
 
 SCRIPT_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_ROOT="$(cd "${SCRIPT_LIB_DIR}/../.." && pwd)"
 
 if [[ -f "${SCRIPT_LIB_DIR}/ui.sh" ]]; then
     # shellcheck source=/dev/null
@@ -18,6 +17,7 @@ install_gradle() {
     local install_dir="${2:-${DEFAULT_GRADLE_INSTALL_DIR:-${HOME}/.local/share/gradle}}"
     local is_dry_run="${3:-false}"
     local is_verbose="${4:-0}"
+    [[ "$is_verbose" -eq 1 ]] && VERBOSE=1
 
     if [[ "$target_ver" == "skip" || -z "$target_ver" ]]; then
         log_info "Skipping Gradle installation as requested."

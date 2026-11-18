@@ -5,6 +5,7 @@
 # ==============================================================================
 
 if [[ -n "${_OS_DETECT_LIB_LOADED:-}" ]]; then
+    # shellcheck disable=SC2317
     return 0 2>/dev/null || exit 0
 fi
 _OS_DETECT_LIB_LOADED=1
@@ -26,6 +27,7 @@ OS_VERSION=""         # OS version string
 CPU_ARCH=""           # "x86_64", "arm64", "unsupported"
 ACTIVE_SHELL=""       # "bash", "zsh", "fish", "unknown"
 TARGET_SHELL_RC=""    # Primary RC file to inject environment into
+# shellcheck disable=SC2034
 ALL_CANDIDATE_RCS=()  # All candidate RC files for thorough cleanup/inspection
 
 # ------------------------------------------------------------------------------
@@ -166,6 +168,7 @@ detect_shell() {
     esac
 
     # Populate candidate list for uninstallation / cleanup
+    # shellcheck disable=SC2034
     ALL_CANDIDATE_RCS=(
         "${HOME}/.zshrc"
         "${HOME}/.bashrc"

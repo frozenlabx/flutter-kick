@@ -5,6 +5,7 @@
 # ==============================================================================
 
 if [[ -n "${_ENV_LIB_LOADED:-}" ]]; then
+    # shellcheck disable=SC2317
     return 0 2>/dev/null || exit 0
 fi
 _ENV_LIB_LOADED=1
@@ -94,7 +95,8 @@ inject_env_block() {
         log_info "Created configuration file: ${target_file}"
     else
         # Create timestamped backup
-        local backup_file="${target_file}.bak.$(date '+%Y%m%d%H%M%S')"
+        local backup_file
+        backup_file="${target_file}.bak.$(date '+%Y%m%d%H%M%S')"
         cp "$target_file" "$backup_file"
         log_debug "Backed up ${target_file} to ${backup_file}"
     fi
@@ -160,7 +162,8 @@ strip_env_block() {
         return 0
     fi
 
-    local backup_file="${target_file}.bak.$(date '+%Y%m%d%H%M%S')"
+    local backup_file
+    backup_file="${target_file}.bak.$(date '+%Y%m%d%H%M%S')"
     cp "$target_file" "$backup_file"
     log_debug "Backed up ${target_file} to ${backup_file} before stripping"
 
@@ -222,6 +225,7 @@ uninstall_toolchain() {
     local dirs_to_check=()
     [[ -n "$android_home" ]] && dirs_to_check+=("$android_home")
     [[ -n "$flutter_home" ]] && dirs_to_check+=("$flutter_home")
+    [[ -n "$gradle_user_home" ]] && dirs_to_check+=("$gradle_user_home")
 
     if [[ ${#dirs_to_check[@]} -gt 0 ]]; then
         printf "\n%sChecking SDK Directories for removal:%s\n" "${CLR_BOLD}" "${CLR_RESET}"
