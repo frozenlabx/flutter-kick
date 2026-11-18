@@ -58,7 +58,7 @@ function Install-WindowsGradle {
         Expand-Archive -Path $tmpZip -DestinationPath $InstallDir -Force
     }
     catch {
-        Write-LogError "Failed to download/extract Gradle $TargetVersion: $($_.Exception.Message)"
+        Write-LogError "Failed to download/extract Gradle ${TargetVersion}: $($_.Exception.Message)"
         return $null
     }
     finally {

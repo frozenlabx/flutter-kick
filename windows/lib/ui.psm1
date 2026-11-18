@@ -1,4 +1,4 @@
-# ==============================================================================
+﻿# ==============================================================================
 # mobile-toolchain-setup: Windows PowerShell UI & Logging Module
 # Provides ANSI formatting, status badges, log rotation, and interactive menus
 # ==============================================================================
@@ -149,7 +149,7 @@ function Read-PromptConfirm {
     )
     $suffix = if ($DefaultIsYes) { "[Y/n]" } else { "[y/N]" }
     Write-Host "  ? " -ForegroundColor Yellow -NoNewline
-    Write-Host "$Label $suffix: " -NoNewline
+    Write-Host "$Label ${suffix}: " -NoNewline
 
     $ans = Read-Host
     if ([string]::IsNullOrWhiteSpace($ans)) {

@@ -28,7 +28,7 @@ function Install-WindowsJDK {
     if ($env:JAVA_HOME -and (Test-Path (Join-Path $env:JAVA_HOME "bin\java.exe"))) {
         $verCheck = try { (& "$env:JAVA_HOME\bin\java.exe" -version 2>&1 | Select-Object -First 1) } catch { "" }
         if ($verCheck -match "`"$TargetVersion\." -or $verCheck -match "`"1\.$TargetVersion\.") {
-            Write-LogSuccess "Active JAVA_HOME already points to JDK $TargetVersion: $env:JAVA_HOME"
+            Write-LogSuccess "Active JAVA_HOME already points to JDK ${TargetVersion}: $env:JAVA_HOME"
             return @{ JavaHome = $env:JAVA_HOME }
         }
     }
@@ -55,7 +55,7 @@ function Install-WindowsJDK {
         Invoke-WebRequest -Uri $adoptiumUrl -OutFile $tmpZip -UseBasicParsing -TimeoutSec 60
     }
     catch {
-        Write-LogError "Failed to download OpenJDK $TargetVersion: $($_.Exception.Message)"
+        Write-LogError "Failed to download OpenJDK ${TargetVersion}: $($_.Exception.Message)"
         Remove-Item -Path $tmpDir -Recurse -Force -ErrorAction SilentlyContinue
         return $null
     }
