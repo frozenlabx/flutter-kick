@@ -198,7 +198,7 @@ function Install-WindowsAndroidSDK {
     # Auto-accept SDK licenses
     Write-LogInfo "Auto-accepting Android SDK licenses..."
     try {
-        for ($i = 0; $i -lt 30; $i++) { "y" } | & $sdkmanagerBat --licenses "--sdk_root=$SdkRoot" 2>$null | Out-Null
+        1..30 | ForEach-Object { "y" } | & $sdkmanagerBat --licenses "--sdk_root=$SdkRoot" 2>$null | Out-Null
         Write-LogSuccess "Android SDK licenses accepted."
     }
     catch {
@@ -208,7 +208,7 @@ function Install-WindowsAndroidSDK {
     # Install packages
     Write-LogInfo "Installing Android SDK packages: $($packages -join ', ')..."
     try {
-        for ($i = 0; $i -lt 30; $i++) { "y" } | & $sdkmanagerBat "--sdk_root=$SdkRoot" $packages
+        1..30 | ForEach-Object { "y" } | & $sdkmanagerBat "--sdk_root=$SdkRoot" $packages
         Write-LogSuccess "Android SDK package installation completed."
     }
     catch {

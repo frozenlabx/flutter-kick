@@ -54,7 +54,7 @@ function Install-WindowsFlutter {
             if ($AndroidSdk) {
                 flutter config --android-sdk "$AndroidSdk" | Out-Null
             }
-            for ($i = 0; $i -lt 30; $i++) { "y" } | flutter doctor --android-licenses 2>$null | Out-Null
+            1..30 | ForEach-Object { "y" } | flutter doctor --android-licenses 2>$null | Out-Null
             Write-LogSuccess "FVM Flutter environment configured."
         }
 
@@ -131,7 +131,7 @@ function Install-WindowsFlutter {
 
         Write-LogInfo "Accepting Flutter Android licenses..."
         try {
-            for ($i = 0; $i -lt 30; $i++) { "y" } | & $flutterBat doctor --android-licenses 2>$null | Out-Null
+            1..30 | ForEach-Object { "y" } | & $flutterBat doctor --android-licenses 2>$null | Out-Null
         }
         catch {}
 
