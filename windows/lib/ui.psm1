@@ -1,4 +1,4 @@
-﻿# ==============================================================================
+# ==============================================================================
 # mobile-toolchain-setup: Windows PowerShell UI & Logging Module
 # Provides ANSI formatting, status badges, log rotation, and interactive menus
 # ==============================================================================
