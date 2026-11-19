@@ -133,8 +133,8 @@ jobs:
         shell: pwsh
         run: |
           Write-Host "=== Running Custom CLI Flags Dry-Run ===" -ForegroundColor Cyan
-          $output = .\windows\install.ps1 -DryRun -Ndk "28.0" -Jdk "21" -Gradle "8.10.2" -Api "34,35" -Flutter "beta"
-          $outStr = $output -join "`n"
+          $output = .\windows\install.ps1 -DryRun -Ndk "28.0" -Jdk "21" -Gradle "8.10.2" -Api "34,35" -Flutter "beta" *>&1
+          $outStr = $output | Out-String
           Write-Host $outStr
 
           # Assertions on resolved configuration
