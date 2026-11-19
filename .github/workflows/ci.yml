@@ -52,7 +52,7 @@ jobs:
           Install-Module -Name PSScriptAnalyzer -Force -Scope CurrentUser
 
           Write-Host "=== Running PSScriptAnalyzer Analysis ===" -ForegroundColor Cyan
-          $issues = Invoke-ScriptAnalyzer -Path windows -Recurse -Severity Error
+          $issues = Invoke-ScriptAnalyzer -Path @('install.ps1', 'windows') -Recurse -Severity Error
           if ($issues) {
               $issues | Format-Table -AutoSize
               throw "PSScriptAnalyzer detected errors in PowerShell modules."

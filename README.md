@@ -127,34 +127,76 @@ Recommended versions, fallback URLs, and default paths are centralized in [`conf
 
 ## Quick Start
 
-### Unix (Linux & macOS)
+### ⚡ 1. Zero-Clone Web One-Liner (Fastest & Recommended)
 
-Run directly using the root convenience script or the Unix entrypoint:
+You do **not** need to install `git` or manually clone the repository! Run the one-liner for your operating system:
 
+#### **macOS & Linux (bash / zsh)**
 ```bash
-# Recommended default installation (interactive prompt)
-./install.sh
+# Interactive setup (prompts for Recommended LTS vs Custom mode):
+curl -fsSL https://raw.githubusercontent.com/frozenlabx/flutter-kick/main/install.sh | bash
 
-# Or invoke directly with defaults without prompts
-./unix/install.sh --default
+# Non-interactive quick installation with verified LTS defaults:
+curl -fsSL https://raw.githubusercontent.com/frozenlabx/flutter-kick/main/install.sh | bash -s -- --default
+
+# Dry-run simulation (preview all actions without writing to disk):
+curl -fsSL https://raw.githubusercontent.com/frozenlabx/flutter-kick/main/install.sh | bash -s -- --dry-run
 ```
 
-### Windows (PowerShell)
-
-Open PowerShell as your current user (administrator rights not required for user toolchain):
-
+#### **Windows (PowerShell)**
+Open PowerShell as your user (Administrator not required):
 ```powershell
-# Recommended default installation
-.\windows\install.ps1 -Default
+# Interactive setup (prompts for Recommended LTS vs Custom mode):
+irm https://raw.githubusercontent.com/frozenlabx/flutter-kick/main/install.ps1 | iex
 
-# Or launch interactive mode
-.\windows\install.ps1
+# Non-interactive quick installation with verified LTS defaults:
+& ([scriptblock]::Create((irm https://raw.githubusercontent.com/frozenlabx/flutter-kick/main/install.ps1))) -Default
+
+# Dry-run simulation:
+& ([scriptblock]::Create((irm https://raw.githubusercontent.com/frozenlabx/flutter-kick/main/install.ps1))) -DryRun
 ```
 
-> **Note for Windows**: If PowerShell script execution is restricted on your machine, enable it for the current process:
+> **Note for Windows**: If script execution is restricted on your machine, enable it for your current process session:
 > ```powershell
 > Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
 > ```
+
+---
+
+### 📦 2. Standalone Tarball / Zip (No Git Required)
+
+If you are inside an air-gapped network, enterprise proxy, or container without Git:
+
+#### **Linux & macOS**:
+```bash
+curl -fsSL https://github.com/frozenlabx/flutter-kick/archive/refs/heads/main.tar.gz | tar -xz
+cd flutter-kick-main
+./install.sh --default
+```
+
+#### **Windows**:
+```powershell
+Invoke-WebRequest -Uri https://github.com/frozenlabx/flutter-kick/archive/refs/heads/main.zip -OutFile flutter-kick.zip
+Expand-Archive -Path flutter-kick.zip -DestinationPath .
+cd flutter-kick-main
+.\install.ps1 -Default
+```
+
+---
+
+### 💻 3. Local Clone (For Contributors & Offline Customization)
+
+```bash
+# Clone the repository
+git clone https://github.com/frozenlabx/flutter-kick.git
+cd flutter-kick
+
+# Unix (macOS / Linux):
+./install.sh
+
+# Windows (PowerShell):
+.\install.ps1
+```
 
 ---
 
@@ -371,6 +413,73 @@ If licenses were not accepted due to network or interactive timeouts, accept the
 
 ### 5. Running behind a Corporate Proxy or Offline
 If your network blocks dynamic Google repository fetching, the installer automatically falls back to pre-configured static URLs in `config/defaults.env`. You can edit `config/defaults.env` to point to internal artifactory mirrors if required.
+
+---
+
+## Distribution & Deployment Strategies
+
+### 1. Zero-Clone Web Bootstrapper Architecture
+`flutter-kick` includes universal web bootstrappers ([`install.sh`](file:///Users/md.tanvirulislam/Desktop/flutter-kick/install.sh) and [`install.ps1`](file:///Users/md.tanvirulislam/Desktop/flutter-kick/install.ps1)) that enable one-line installations without `git clone`:
+- **Dual-Mode Operation**: When run locally within a cloned directory, it delegates directly to `unix/install.sh` or `windows/install.ps1`. When run standalone (e.g. via `curl | bash` or `irm | iex`), it downloads the repository archive directly into a secure temporary directory (`/tmp` or `$env:TEMP`).
+- **Interactive TTY Reconnection**: On Unix, piped execution (`curl ... | bash`) automatically reconnects standard input to `/dev/tty`, allowing full colored interactive menus (`[1] Recommended, [2] Custom`) to work seamlessly without skipping prompts.
+- **Automatic Self-Cleanup**: Temporary archives are trapped and removed immediately upon exit or interruption.
+
+### 2. Docker & Container Pipelines
+Add this single line to your `Dockerfile` for headless CI builds:
+```dockerfile
+RUN curl -fsSL https://raw.githubusercontent.com/frozenlabx/flutter-kick/main/install.sh | bash -s -- --default
+ENV PATH="/root/.local/share/jdks/temurin-17/bin:/root/Android/Sdk/cmdline-tools/latest/bin:/root/Android/Sdk/platform-tools:/root/.local/share/gradle/gradle-8.11.1/bin:/root/development/flutter/bin:${PATH}"
+ENV JAVA_HOME="/root/.local/share/jdks/temurin-17"
+ENV ANDROID_HOME="/root/Android/Sdk"
+```
+
+### 3. GitHub Pages Vanity URL (Optional Setup)
+By enabling GitHub Pages for `frozenlabx/flutter-kick` on the `main` branch (root), users can run even shorter commands:
+```bash
+# Unix (Linux & macOS):
+curl -fsSL https://frozenlabx.github.io/flutter-kick/install.sh | bash
+
+# Windows:
+irm https://frozenlabx.github.io/flutter-kick/install.ps1 | iex
+```
+
+### 4. Package Managers Roadmap
+
+#### **Homebrew (macOS & Linux)**
+You can host a Homebrew Tap by creating repository `frozenlabx/homebrew-tap` with formula `flutter-kick.rb`:
+```ruby
+class FlutterKick < Formula
+  desc "Headless Android SDK & Flutter development environment setup"
+  homepage "https://github.com/frozenlabx/flutter-kick"
+  url "https://github.com/frozenlabx/flutter-kick/archive/refs/tags/v1.0.0.tar.gz"
+  sha256 "<checksum>"
+  license "MIT"
+
+  def install
+    bin.install "install.sh" => "flutter-kick"
+    prefix.install "unix", "config"
+  end
+end
+```
+Users then install via:
+```bash
+brew tap frozenlabx/tap
+brew install flutter-kick
+flutter-kick --default
+```
+
+#### **Scoop (Windows)**
+Create a Scoop bucket manifest `flutter-kick.json`:
+```json
+{
+  "version": "1.0.0",
+  "description": "Headless Android SDK & Flutter Toolchain Automation",
+  "homepage": "https://github.com/frozenlabx/flutter-kick",
+  "license": "MIT",
+  "url": "https://github.com/frozenlabx/flutter-kick/archive/refs/tags/v1.0.0.zip",
+  "bin": "install.ps1"
+}
+```
 
 ---
 

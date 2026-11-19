@@ -188,6 +188,9 @@ help_out="$("${PROJECT_ROOT}/unix/install.sh" --help)"
 assert_contains "--help displays usage" "$help_out" "Usage:"
 assert_contains "--help displays options" "$help_out" "--dry-run"
 
+root_help_out="$("${PROJECT_ROOT}/install.sh" --help)"
+assert_contains "Root install.sh wrapper delegates properly" "$root_help_out" "Usage:"
+
 # --dry-run --default
 default_dry_out="$("${PROJECT_ROOT}/unix/install.sh" --dry-run --default)"
 assert_contains "Recommended mode sets JDK 17" "$default_dry_out" "JDK Version            : 17"
