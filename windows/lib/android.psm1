@@ -16,15 +16,35 @@ function Resolve-WindowsCmdlineToolsUrl {
         if ($response -and $response.Content) {
             [xml]$xml = $response.Content
             $latestUrl = ""
+
+            # Priority 1: Canonical 'cmdline-tools;latest' package
             foreach ($pkg in $xml.repository.remotePackage) {
-                if ($pkg.path -like "cmdline-tools;*") {
+                if ($pkg.path -eq "cmdline-tools;latest") {
                     foreach ($archive in $pkg.archives.archive) {
                         if ($archive."host-os" -eq "windows") {
                             $latestUrl = $archive.complete.url
+                            break
                         }
+                    }
+                    if ($latestUrl) { break }
+                }
+            }
+
+            # Priority 2: Fallback to highest numbered version if latest not found
+            if (-not $latestUrl) {
+                foreach ($pkg in $xml.repository.remotePackage) {
+                    if ($pkg.path -like "cmdline-tools;[0-9]*") {
+                        foreach ($archive in $pkg.archives.archive) {
+                            if ($archive."host-os" -eq "windows") {
+                                $latestUrl = $archive.complete.url
+                                break
+                            }
+                        }
+                        if ($latestUrl) { break }
                     }
                 }
             }
+
             if ($latestUrl) {
                 if (-not $latestUrl.StartsWith("http")) {
                     $latestUrl = "https://dl.google.com/android/repository/" + $latestUrl
@@ -168,10 +188,14 @@ function Install-WindowsAndroidSDK {
                 Remove-Item -Path $latestDir -Recurse -Force -ErrorAction SilentlyContinue
             }
 
-            # Standard Google zip has an inner 'cmdline-tools' folder
-            $inner = Join-Path $extractTmp "cmdline-tools"
-            if (Test-Path $inner) {
-                Move-Item -Path $inner -Destination $latestDir -Force
+            # Resilient directory handling: Google zip usually contains 'cmdline-tools'
+            $innerCmdline = Join-Path $extractTmp "cmdline-tools"
+            $innerTools = Join-Path $extractTmp "tools"
+            if (Test-Path $innerCmdline) {
+                Move-Item -Path $innerCmdline -Destination $latestDir -Force
+            }
+            elseif (Test-Path $innerTools) {
+                Move-Item -Path $innerTools -Destination $latestDir -Force
             }
             else {
                 Move-Item -Path $extractTmp -Destination $latestDir -Force

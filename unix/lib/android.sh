@@ -33,6 +33,11 @@ resolve_cmdline_tools_url() {
     local xml_host="linux"
     [[ "$target_os" == "macos" ]] && xml_host="macosx"
 
+    local target_arch="${CPU_ARCH:-}"
+    if [[ -z "$target_arch" ]]; then
+        target_arch="$(uname -m 2>/dev/null || echo "")"
+    fi
+
     local parsed_url=""
 
     # Attempt dynamic fetch and parse if curl and python3 exist
@@ -42,27 +47,82 @@ resolve_cmdline_tools_url() {
         if [[ -n "$xml_content" ]]; then
             parsed_url="$(python3 -c "
 import sys, xml.etree.ElementTree as ET
-try:
-    root = ET.fromstring(sys.stdin.read())
-    target_host = sys.argv[1]
-    latest_url = ''
+
+def find_cmdline_url(xml_str, target_host, target_arch=''):
+    try:
+        root = ET.fromstring(xml_str)
+    except Exception:
+        return ''
+
+    norm_arch = ''
+    if target_arch in ('arm64', 'aarch64'):
+        norm_arch = 'aarch64'
+    elif target_arch in ('x86_64', 'amd64', 'x64'):
+        norm_arch = 'x64'
+
+    def get_archive_url(pkg):
+        candidates = []
+        for archive in pkg.findall('.//{*}archive'):
+            host_elem = archive.find('{*}host-os')
+            host = host_elem.text if host_elem is not None else ''
+            if host != target_host:
+                continue
+            arch_elem = archive.find('{*}host-arch')
+            arch = arch_elem.text if arch_elem is not None else ''
+            url_elem = archive.find('.//{*}url')
+            url = url_elem.text.strip() if (url_elem is not None and url_elem.text) else ''
+            if url:
+                candidates.append((arch, url))
+        if not candidates:
+            return ''
+        if norm_arch:
+            for arch, url in candidates:
+                if arch == norm_arch:
+                    return url
+        for arch, url in candidates:
+            if not arch or arch == 'x64':
+                return url
+        return candidates[0][1]
+
+    # Priority 1: Canonical 'cmdline-tools;latest' package
+    for pkg in root.findall('.//{*}remotePackage'):
+        if pkg.get('path') == 'cmdline-tools;latest':
+            url = get_archive_url(pkg)
+            if url:
+                return url
+
+    # Priority 2: Highest numbered cmdline-tools;<N> package
+    numbered = []
     for pkg in root.findall('.//{*}remotePackage'):
         path = pkg.get('path', '')
         if path.startswith('cmdline-tools;'):
-            for archive in pkg.findall('.//{*}archive'):
-                host_elem = archive.find('{*}host-os')
-                host = host_elem.text if host_elem is not None else ''
-                if host == target_host:
-                    url_elem = archive.find('.//{*}url')
-                    if url_elem is not None and url_elem.text:
-                        latest_url = url_elem.text.strip()
-    if latest_url:
-        if not latest_url.startswith('http'):
-            latest_url = 'https://dl.google.com/android/repository/' + latest_url
-        print(latest_url)
+            ver_str = path.split(';', 1)[1]
+            try:
+                parts = [int(p) for p in ver_str.split('-')[0].split('.') if p.isdigit()]
+                if parts:
+                    numbered.append((parts, pkg))
+            except Exception:
+                pass
+    if numbered:
+        numbered.sort(key=lambda x: x[0], reverse=True)
+        for _, pkg in numbered:
+            url = get_archive_url(pkg)
+            if url:
+                return url
+    return ''
+
+try:
+    xml_data = sys.stdin.read()
+    target_host = sys.argv[1]
+    target_arch = sys.argv[2] if len(sys.argv) > 2 else ''
+    url = find_cmdline_url(xml_data, target_host, target_arch)
+    if url:
+        if not url.startswith('http'):
+            url = 'https://dl.google.com/android/repository/' + url
+        print(url)
 except Exception:
     pass
-" "$xml_host" <<< "$xml_content" 2>/dev/null || true)"
+" "$xml_host" "$target_arch" <<< "$xml_content" 2>/dev/null || true)"
         fi
     fi
 
@@ -232,20 +292,32 @@ install_android_sdk() {
 
         rm -rf "${sdk_root}/cmdline-tools/latest"
 
-        # Handle inner structure: standard Google zip contains a 'cmdline-tools' folder
+        # Handle inner structure: Google archives may contain 'cmdline-tools', 'tools', or flat files
         if [[ -d "${extract_dir}/cmdline-tools" ]]; then
             mv "${extract_dir}/cmdline-tools" "${sdk_root}/cmdline-tools/latest"
+        elif [[ -d "${extract_dir}/tools" ]]; then
+            mv "${extract_dir}/tools" "${sdk_root}/cmdline-tools/latest"
         else
-            mv "$extract_dir" "${sdk_root}/cmdline-tools/latest"
+            mkdir -p "${sdk_root}/cmdline-tools/latest"
+            cp -R "${extract_dir}/." "${sdk_root}/cmdline-tools/latest/"
         fi
 
         chmod +x "${sdk_root}/cmdline-tools/latest/bin/"* 2>/dev/null || true
         rm -rf "$tmp_dir"
+
+        if [[ ! -x "$sdkmanager_bin" ]]; then
+            log_error "sdkmanager binary not found or not executable at ${sdkmanager_bin}"
+            return 1
+        fi
         log_success "cmdline-tools installed at ${sdk_root}/cmdline-tools/latest"
     else
         log_success "Android cmdline-tools already present at ${sdk_root}/cmdline-tools/latest"
     fi
 
+    # Ensure Java and Android tools are in active subshell PATH
+    if [[ -n "${JAVA_HOME:-}" && -d "${JAVA_HOME}/bin" && ":${PATH}:" != *":${JAVA_HOME}/bin:"* ]]; then
+        export PATH="${JAVA_HOME}/bin:${PATH}"
+    fi
     export PATH="${sdk_root}/cmdline-tools/latest/bin:${sdk_root}/platform-tools:${PATH}"
 
     # 2. Auto-accept SDK licenses
