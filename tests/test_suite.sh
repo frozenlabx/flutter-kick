@@ -29,7 +29,7 @@ assert_contains() {
     local haystack="$2"
     local needle="$3"
     TESTS_RUN=$((TESTS_RUN + 1))
-    if echo "$haystack" | grep -F -q -e "$needle"; then
+    if [[ "$haystack" == *"$needle"* ]]; then
         printf "  ✓ PASS: %s\n" "$desc"
         TESTS_PASSED=$((TESTS_PASSED + 1))
     else
@@ -127,7 +127,7 @@ assert_contains "Fish block uses fish_add_path" "$fish_block" "fish_add_path"
 printf "\n[Test Group 5] unix/lib/jdk.sh module execution\n"
 jdk17_dry="$("${PROJECT_ROOT}/unix/lib/jdk.sh" --version 17 --dry-run)"
 assert_contains "jdk.sh recognizes version 17" "$jdk17_dry" "JDK 17"
-if echo "$jdk17_dry" | grep -q -E "(already installed|already available)"; then
+if [[ "$jdk17_dry" == *"already installed"* || "$jdk17_dry" == *"already available"* ]]; then
     assert_contains "jdk.sh detects pre-installed JDK 17" "$jdk17_dry" "JDK 17"
 else
     assert_contains "jdk.sh references Adoptium endpoint" "$jdk17_dry" "api.adoptium.net/v3/binary/latest/17"
@@ -136,7 +136,7 @@ fi
 
 jdk21_dry="$("${PROJECT_ROOT}/unix/lib/jdk.sh" --version 21 --dry-run)"
 assert_contains "jdk.sh recognizes customizable version 21" "$jdk21_dry" "JDK 21"
-if echo "$jdk21_dry" | grep -q -E "(already installed|already available)"; then
+if [[ "$jdk21_dry" == *"already installed"* || "$jdk21_dry" == *"already available"* ]]; then
     assert_contains "jdk.sh detects pre-installed JDK 21" "$jdk21_dry" "JDK 21"
 else
     assert_contains "jdk.sh references Adoptium 21 endpoint" "$jdk21_dry" "api.adoptium.net/v3/binary/latest/21"
