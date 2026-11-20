@@ -1,4 +1,4 @@
-# ==============================================================================
+﻿# ==============================================================================
 # mobile-toolchain-setup: Windows PowerShell Entrypoint
 # Automates headless Android SDK & Flutter development environment setup
 # ==============================================================================
@@ -135,14 +135,44 @@ else {
     }
     else {
         Write-Host "`n--- Custom Configuration ---" -ForegroundColor Cyan
+        Write-Host "Select or enter your preferred versions below." -ForegroundColor DarkGray
         Write-Host "Press [Enter] to accept the bracketed default values.`n" -ForegroundColor DarkGray
 
+        # 1. JDK
+        Write-Host "  • Java Development Kit (JDK):" -ForegroundColor White
+        Write-Host "    Options: 17 (LTS, Recommended for AGP 8 & Flutter), 21 (LTS)" -ForegroundColor DarkGray
         $cfgJdk = Prompt-WithDefault "JDK Version (17/21)" $cfg['JDK_VERSION']
+
+        # 2. Android API
+        Write-Host "`n  • Android SDK Platform API:" -ForegroundColor White
+        Write-Host "    Common: 36 (Android 16), 35 (Android 15), 34 (Android 14), 33 (Android 13)" -ForegroundColor DarkGray
+        Write-Host "    Tip: You can specify multiple APIs separated by commas (e.g. 34,35,36)" -ForegroundColor DarkGray
         $cfgApi = Prompt-WithDefault "Android API Level" $cfg['ANDROID_API']
+
+        # 3. Android Build-Tools
+        Write-Host "`n  • Android SDK Build-Tools:" -ForegroundColor White
+        Write-Host "    Common: 36.0.0 (pairs with API 36), 35.0.0, 34.0.0" -ForegroundColor DarkGray
         $cfgBuildTools = Prompt-WithDefault "Android Build-Tools" $cfg['BUILD_TOOLS_VERSION']
+
+        # 4. Android NDK
+        Write-Host "`n  • Android NDK (Native Development Kit):" -ForegroundColor White
+        Write-Host "    Common: 28.0 (r28 LTS), 27.2 (r27c LTS), 26.3 (r26d), 25.2, or 'skip'" -ForegroundColor DarkGray
+        Write-Host "    Tip: Partial versions like '28.0' auto-resolve to full revisions" -ForegroundColor DarkGray
         $cfgNdk = Prompt-WithDefault "Android NDK Version (version or 'skip')" $cfg['NDK_VERSION']
+
+        # 5. CMake
+        Write-Host "`n  • CMake (Native build tool):" -ForegroundColor White
+        Write-Host "    Common: 3.22.1 (Recommended for Android Gradle Plugin), 3.28.0, or 'skip'" -ForegroundColor DarkGray
         $cfgCmake = Prompt-WithDefault "CMake Version (version or 'skip')" $cfg['CMAKE_VERSION']
+
+        # 6. Gradle
+        Write-Host "`n  • Gradle Build Tool:" -ForegroundColor White
+        Write-Host "    Common: 8.11.1 (Current Stable), 8.10.2, 8.9, 8.7, or 'skip'" -ForegroundColor DarkGray
         $cfgGradle = Prompt-WithDefault "Gradle Version (version or 'skip')" $cfg['GRADLE_VERSION']
+
+        # 7. Flutter
+        Write-Host "`n  • Flutter SDK Channel / Version Management:" -ForegroundColor White
+        Write-Host "    Options: stable (Recommended), beta, master, git tag (e.g. 3.27.0), or 'fvm'" -ForegroundColor DarkGray
         $cfgFlutter = Prompt-WithDefault "Flutter Channel/Tag or 'fvm'" $cfg['FLUTTER_CHANNEL']
     }
 }

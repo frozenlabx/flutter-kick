@@ -215,15 +215,18 @@ Launches an interactive menu where you can configure each toolchain component. P
 - **Unix**: `./unix/install.sh`
 - **Windows**: `.\windows\install.ps1`
 
-Interactive prompts:
-1. `JDK Version (17/21)` [default: `17`]
-2. `Android API Level` [default: `36`, supports comma-separated e.g. `34,35,36`]
-3. `Android Build-Tools` [default: `36.0.0`]
-4. `Android NDK Version` [default: `27.2.12479018`, supports `28.0` or `skip`]
-5. `CMake Version` [default: `3.22.1` or `skip`]
-6. `Gradle Version` [default: `8.11.1` or `skip`]
-7. `Flutter Channel/Tag or 'fvm'` [default: `stable`]
-8. `Setup macOS iOS Tools (Xcode CLI/CocoaPods)` [default: `yes`] *(macOS only)*
+Each prompt provides available options, popular versions, and helpful tips:
+
+| Component | Default | Available & Common Options | Notes |
+| :--- | :--- | :--- | :--- |
+| **JDK Version** | `17` | `17` (LTS, Recommended), `21` (LTS) | Eclipse Temurin OpenJDK |
+| **Android API Level** | `36` | `36` (Android 16), `35` (15), `34` (14), `33` (13) | Comma-separated supported (e.g. `34,35,36`) |
+| **Android Build-Tools**| `36.0.0` | `36.0.0`, `35.0.0`, `34.0.0` | Recommended to pair with target API |
+| **Android NDK** | `27.2.12479018` | `28.0` (r28 LTS), `27.2` (r27c LTS), `26.3`, `skip`| Partial versions auto-resolve via sdkmanager |
+| **CMake** | `3.22.1` | `3.22.1` (AGP 8 standard), `3.28.0`, `skip` | C/C++ native build tool |
+| **Gradle** | `8.11.1` | `8.11.1` (Current Stable), `8.10.2`, `8.9`, `skip` | Official Gradle release |
+| **Flutter SDK** | `stable` | `stable` (LTS), `beta`, `master`, `<git-tag>`, `fvm` | FVM installs Flutter Version Management |
+| **macOS iOS Tools** | `yes` | `yes`, `no` | Xcode Command Line Tools & CocoaPods |
 
 ### 3. Non-Interactive CLI Automation
 

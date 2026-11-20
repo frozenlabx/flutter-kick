@@ -294,16 +294,50 @@ else
     else
         # Interactive Custom Setup mode
         printf "\n%s--- Custom Configuration ---%s\n" "${CLR_BOLD}${CLR_CYAN}" "${CLR_RESET}"
+        printf "%sSelect or enter your preferred versions below.%s\n" "${CLR_DIM}" "${CLR_RESET}"
         printf "%sPress [Enter] to accept the bracketed default values.%s\n\n" "${CLR_DIM}" "${CLR_RESET}"
 
+        # 1. JDK
+        printf "  %s• Java Development Kit (JDK):%s\n" "${CLR_BOLD}" "${CLR_RESET}"
+        printf "    %sOptions: 17 (LTS, Recommended for AGP 8 & Flutter), 21 (LTS)%s\n" "${CLR_DIM}" "${CLR_RESET}"
         prompt_with_default "JDK Version (17/21)" "$JDK_VERSION" CFG_JDK
+
+        # 2. Android API
+        printf "\n  %s• Android SDK Platform API:%s\n" "${CLR_BOLD}" "${CLR_RESET}"
+        printf "    %sCommon: 36 (Android 16), 35 (Android 15), 34 (Android 14), 33 (Android 13)%s\n" "${CLR_DIM}" "${CLR_RESET}"
+        printf "    %sTip: You can specify multiple APIs separated by commas (e.g. 34,35,36)%s\n" "${CLR_DIM}" "${CLR_RESET}"
         prompt_with_default "Android API Level" "$ANDROID_API" CFG_API
+
+        # 3. Android Build-Tools
+        printf "\n  %s• Android SDK Build-Tools:%s\n" "${CLR_BOLD}" "${CLR_RESET}"
+        printf "    %sCommon: 36.0.0 (pairs with API 36), 35.0.0, 34.0.0%s\n" "${CLR_DIM}" "${CLR_RESET}"
         prompt_with_default "Android Build-Tools" "$BUILD_TOOLS_VERSION" CFG_BUILD_TOOLS
+
+        # 4. Android NDK
+        printf "\n  %s• Android NDK (Native Development Kit):%s\n" "${CLR_BOLD}" "${CLR_RESET}"
+        printf "    %sCommon: 28.0 (r28 LTS), 27.2 (r27c LTS), 26.3 (r26d), 25.2, or 'skip'%s\n" "${CLR_DIM}" "${CLR_RESET}"
+        printf "    %sTip: Partial versions like '28.0' auto-resolve to full revisions%s\n" "${CLR_DIM}" "${CLR_RESET}"
         prompt_with_default "Android NDK Version (version or 'skip')" "$NDK_VERSION" CFG_NDK
+
+        # 5. CMake
+        printf "\n  %s• CMake (Native build tool):%s\n" "${CLR_BOLD}" "${CLR_RESET}"
+        printf "    %sCommon: 3.22.1 (Recommended for Android Gradle Plugin), 3.28.0, or 'skip'%s\n" "${CLR_DIM}" "${CLR_RESET}"
         prompt_with_default "CMake Version (version or 'skip')" "$CMAKE_VERSION" CFG_CMAKE
+
+        # 6. Gradle
+        printf "\n  %s• Gradle Build Tool:%s\n" "${CLR_BOLD}" "${CLR_RESET}"
+        printf "    %sCommon: 8.11.1 (Current Stable), 8.10.2, 8.9, 8.7, or 'skip'%s\n" "${CLR_DIM}" "${CLR_RESET}"
         prompt_with_default "Gradle Version (version or 'skip')" "$GRADLE_VERSION" CFG_GRADLE
+
+        # 7. Flutter
+        printf "\n  %s• Flutter SDK Channel / Version Management:%s\n" "${CLR_BOLD}" "${CLR_RESET}"
+        printf "    %sOptions: stable (Recommended), beta, master, git tag (e.g. 3.27.0), or 'fvm'%s\n" "${CLR_DIM}" "${CLR_RESET}"
         prompt_with_default "Flutter Channel/Tag or 'fvm'" "$FLUTTER_CHANNEL" CFG_FLUTTER
+
+        # 8. macOS iOS Tools (macOS only)
         if [[ "$OS_TYPE" == "macos" ]]; then
+            printf "\n  %s• macOS iOS Development Tools:%s\n" "${CLR_BOLD}" "${CLR_RESET}"
+            printf "    %sOptions: yes (verifies Xcode CLI tools and CocoaPods), no%s\n" "${CLR_DIM}" "${CLR_RESET}"
             prompt_with_default "Setup macOS iOS Tools (Xcode CLI/CocoaPods) (yes/no)" "$MACOS_IOS_TOOLS" CFG_MACOS_IOS_TOOLS
         else
             CFG_MACOS_IOS_TOOLS="no"
