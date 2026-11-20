@@ -1,6 +1,7 @@
 # ==============================================================================
 # mobile-toolchain-setup: Windows Parallel Ingestion Module
 # Concurrently pre-fetches JDK, Android cmdline-tools, Gradle, and Flutter SDK
+# Provides live progress indicators for all concurrent workers
 # ==============================================================================
 
 Import-Module (Join-Path $PSScriptRoot "ui.psm1") -ErrorAction SilentlyContinue
@@ -9,6 +10,21 @@ Import-Module (Join-Path $PSScriptRoot "jdk.psm1") -ErrorAction SilentlyContinue
 Import-Module (Join-Path $PSScriptRoot "android.psm1") -ErrorAction SilentlyContinue
 Import-Module (Join-Path $PSScriptRoot "gradle.psm1") -ErrorAction SilentlyContinue
 Import-Module (Join-Path $PSScriptRoot "flutter.psm1") -ErrorAction SilentlyContinue
+
+function Get-TargetSizeMb {
+    param([string]$Path)
+    if (Test-Path -Path $Path -PathType Leaf) {
+        $bytes = (Get-Item $Path).Length
+        return [math]::Round($bytes / 1MB, 1).ToString("F1") + " MB"
+    }
+    elseif (Test-Path -Path $Path -PathType Container) {
+        $measure = Get-ChildItem -Path $Path -Recurse -File -ErrorAction SilentlyContinue | Measure-Object -Property Length -Sum
+        if ($measure -and $measure.Sum) {
+            return [math]::Round($measure.Sum / 1MB, 1).ToString("F1") + " MB"
+        }
+    }
+    return "0.0 MB"
+}
 
 function Invoke-WindowsParallelIngestion {
     param (
@@ -88,34 +104,78 @@ function Invoke-WindowsParallelIngestion {
     if (-not (Test-Path $flutterGitFolder) -and $FlutterChannel -ne "fvm") {
         $jobs["Flutter"] = Start-Job -ScriptBlock {
             param($channel, $dest)
-            git clone --depth 1 -b $channel "https://github.com/flutter/flutter.git" $dest 2>$null
+            git clone --progress --depth 1 -b $channel "https://github.com/flutter/flutter.git" $dest 2>$null
         } -ArgumentList $FlutterChannel, $FlutterHome
     }
 
-    try {
-        # Wait for JDK and Cmdline first
-        Wait-Job -Job $jobs["JDK"], $jobs["Cmdline"] | Out-Null
-        Write-LogSuccess "Eclipse Temurin OpenJDK $JdkVer downloaded."
-        Write-LogSuccess "Android SDK cmdline-tools downloaded."
+    $jobTargets = @{
+        "JDK" = $jdkZip
+        "Cmdline" = $cmdlineZip
+    }
+    if ($jobs.ContainsKey("Gradle")) { $jobTargets["Gradle"] = $gradleZip }
+    if ($jobs.ContainsKey("Flutter")) { $jobTargets["Flutter"] = $FlutterHome }
 
-        # Staged extraction and immediate package installation
+    try {
+        # Active progress monitoring loop
+        $completedJobs = @{}
+        while ($true) {
+            $hasRunning = $false
+            foreach ($key in $jobs.Keys) {
+                $job = $jobs[$key]
+                if ($job.State -eq 'Running') {
+                    $hasRunning = $true
+                } elseif (-not $completedJobs.ContainsKey($key)) {
+                    $completedJobs[$key] = $true
+                    $sz = Get-TargetSizeMb -Path $jobTargets[$key]
+                    if ($job.State -eq 'Completed') {
+                        Write-LogSuccess "$key download completed ($sz)."
+                    } else {
+                        Write-LogError "$key worker failed with state: $($job.State)"
+                        Receive-Job -Job $job -Keep | Out-Host
+                    }
+                }
+            }
+
+            if (-not $hasRunning) { break }
+
+            $statusParts = @()
+            foreach ($key in $jobs.Keys) {
+                $sz = Get-TargetSizeMb -Path $jobTargets[$key]
+                if ($jobs[$key].State -eq 'Running') {
+                    $statusParts += "$key`: $sz"
+                } else {
+                    $statusParts += "$key`: Done"
+                }
+            }
+            Write-Progress -Activity "Parallel Toolchain Ingestion" -Status ($statusParts -join " | ")
+            Start-Sleep -Milliseconds 800
+        }
+        Write-Progress -Activity "Parallel Toolchain Ingestion" -Completed
+
+        # Check for any failures
+        $failedJobs = $jobs.Values | Where-Object { $_.State -ne 'Completed' }
+        if ($failedJobs) {
+            Write-LogError "One or more parallel workers failed."
+            return
+        }
+
+        # Staged extraction and toolchain configuration pipeline
+        Write-LogInfo "Configuring Eclipse Temurin OpenJDK $JdkVer..."
         Install-WindowsJDK -TargetVersion $JdkVer -InstallRoot $JdkInstallDir -Architecture $Architecture -PredownloadedArchive $jdkZip
+
+        Write-LogInfo "Configuring Android SDK Command-line Tools and Packages..."
         Install-WindowsAndroidSDK -ApiArg $ApiVer -BuildToolsArg $BuildToolsVer -NdkArg $NdkVer -CmakeArg $CmakeVer -SdkRoot $SdkRoot -PredownloadedArchive $cmdlineZip
 
         if ($jobs.ContainsKey("Gradle")) {
-            Wait-Job -Job $jobs["Gradle"] | Out-Null
-            Write-LogSuccess "Gradle $GradleVer downloaded."
+            Write-LogInfo "Configuring Gradle $GradleVer..."
             Install-WindowsGradle -TargetVersion $GradleVer -InstallDir $GradleInstallDir -PredownloadedArchive $gradleZip
         }
 
-        if ($jobs.ContainsKey("Flutter")) {
-            Wait-Job -Job $jobs["Flutter"] | Out-Null
-            Write-LogSuccess "Flutter SDK repository ready."
-        }
+        Write-LogInfo "Configuring Flutter SDK ($FlutterChannel)..."
         Install-WindowsFlutter -ChannelArg $FlutterChannel -FlutterRoot $FlutterHome -AndroidSdk $SdkRoot
 
         $elapsed = [int]((Get-Date) - $startTime).TotalSeconds
-        Write-LogSuccess "All toolchain components ingested in ${elapsed}s (parallel execution)."
+        Write-LogSuccess "All toolchain components ingested & configured in ${elapsed}s."
     }
     finally {
         foreach ($j in $jobs.Values) {

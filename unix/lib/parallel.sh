@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# shellcheck disable=SC2317
 # ==============================================================================
 # mobile-toolchain-setup: Parallel Ingestion Module
 # Concurrently pre-fetches JDK, Android cmdline-tools, Gradle, and Flutter SDK
+# Provides live, real-time progress indicators for all concurrent workers
 # ==============================================================================
 set -euo pipefail
 
@@ -32,6 +32,34 @@ if [[ -f "${SCRIPT_LIB_DIR}/flutter.sh" ]]; then
     # shellcheck source=/dev/null
     source "${SCRIPT_LIB_DIR}/flutter.sh"
 fi
+
+# ------------------------------------------------------------------------------
+# Size Inspection Helper (POSIX / macOS / Linux compatible)
+# ------------------------------------------------------------------------------
+get_path_size_mb() {
+    local target="$1"
+    if [[ -f "$target" ]]; then
+        local bytes
+        bytes="$(wc -c < "$target" 2>/dev/null || echo 0)"
+        bytes="${bytes//[[:space:]]/}"
+        if [[ -n "$bytes" && "$bytes" -gt 0 ]]; then
+            local mb=$(( bytes / 1048576 ))
+            local dec=$(( (bytes % 1048576) * 10 / 1048576 ))
+            echo "${mb}.${dec} MB"
+            return 0
+        fi
+    elif [[ -d "$target" ]]; then
+        local kb
+        kb="$(du -sk "$target" 2>/dev/null | awk '{print $1}')"
+        if [[ -n "$kb" && "$kb" -gt 0 ]]; then
+            local mb=$(( kb / 1024 ))
+            local dec=$(( (kb % 1024) * 10 / 1024 ))
+            echo "${mb}.${dec} MB"
+            return 0
+        fi
+    fi
+    echo "0.0 MB"
+}
 
 # ------------------------------------------------------------------------------
 # Parallel Download Workers
@@ -119,9 +147,9 @@ fetch_flutter_asset() {
         local git_url="https://github.com/flutter/flutter.git"
         echo "Cloning Flutter (${channel_arg}) into ${flutter_root}"
         mkdir -p "$(dirname "$flutter_root")"
-        if ! git clone --depth 1 -b "$channel_arg" "$git_url" "$flutter_root" 2>/dev/null; then
+        if ! git clone --progress --depth 1 -b "$channel_arg" "$git_url" "$flutter_root" 2>/dev/null; then
             echo "Shallow clone failed, attempting full clone..."
-            git clone "$git_url" "$flutter_root"
+            git clone --progress "$git_url" "$flutter_root"
             git -C "$flutter_root" checkout "$channel_arg" 2>/dev/null || \
                 git -C "$flutter_root" checkout "tags/$channel_arg" 2>/dev/null || true
         fi
@@ -201,67 +229,199 @@ run_parallel_ingestion() {
     fetch_flutter_asset "$cfg_flutter" "$flutter_home" "$log_flutter" &
     local pid_flutter=$!
 
-    # Helper to kill background processes on error
+    # Helper to kill background processes on error or cancellation
     kill_workers() {
         kill -9 "$pid_jdk" "$pid_cmd" "$pid_gradle" "$pid_flutter" 2>/dev/null || true
         wait 2>/dev/null || true
     }
+    trap kill_workers INT TERM
 
-    # Monitor and wait for JDK & cmdline-tools first
-    if ! wait "$pid_jdk"; then
-        log_error "JDK download failed. Worker log:"
-        cat "$log_jdk" >&2
-        kill_workers
-        rm -rf "$parallel_scratch"
-        return 1
+    # --------------------------------------------------------------------------
+    # Live Multi-Worker Progress Monitoring Loop
+    # --------------------------------------------------------------------------
+    local is_interactive=0
+    [[ -t 1 ]] && is_interactive=1
+
+    local spin_chars=("⠋" "⠙" "⠹" "⠸" "⠼" "⠴" "⠦" "⠧" "⠇" "⠏")
+    local spin_len=10
+    local spin_idx=0
+
+    local task_names=(
+        "OpenJDK ${cfg_jdk}"
+        "Android cmdline-tools"
+        "Gradle ${cfg_gradle}"
+        "Flutter (${cfg_flutter})"
+    )
+    local pids=("$pid_jdk" "$pid_cmd" "$pid_gradle" "$pid_flutter")
+    local logs=("$log_jdk" "$log_cmd" "$log_gradle" "$log_flutter")
+    local paths=("$jdk_tar" "$cmdline_zip" "$gradle_zip" "$flutter_home")
+    local exit_codes=(-1 -1 -1 -1)
+    local final_status=("" "" "" "")
+
+    # In interactive TTY, print the initial 4 lines
+    if [[ "$is_interactive" -eq 1 ]]; then
+        local i
+        for i in 0 1 2 3; do
+            printf "  [%d/4] %-26s : %s Initializing...\n" "$((i + 1))" "${task_names[$i]}" "${CLR_CYAN}⠋${CLR_RESET}"
+        done
     fi
-    log_success "Eclipse Temurin JDK ${cfg_jdk} downloaded."
 
-    if ! wait "$pid_cmd"; then
-        log_error "Android cmdline-tools download failed. Worker log:"
-        cat "$log_cmd" >&2
-        kill_workers
-        rm -rf "$parallel_scratch"
-        return 1
+    local all_done=0
+    local tick=0
+    local last_non_tty_report=0
+
+    while [[ $all_done -eq 0 ]]; do
+        all_done=1
+
+        # Check each worker status
+        local idx
+        for idx in 0 1 2 3; do
+            if [[ ${exit_codes[$idx]} -eq -1 ]]; then
+                if ! kill -0 "${pids[$idx]}" 2>/dev/null; then
+                    local code=0
+                    if wait "${pids[$idx]}"; then
+                        code=0
+                    else
+                        code=$?
+                    fi
+                    exit_codes[$idx]=$code
+
+                    local sz
+                    sz="$(get_path_size_mb "${paths[$idx]}")"
+
+                    if [[ $code -eq 0 ]]; then
+                        if [[ -f "${logs[$idx]}" ]] && grep -q -E "(skipped|already exists|FVM mode)" "${logs[$idx]}"; then
+                            final_status[$idx]="${CLR_YELLOW}[-] Up-to-date / Skipped${CLR_RESET}"
+                        else
+                            final_status[$idx]="${CLR_GREEN}[✓] Complete (${sz})${CLR_RESET}"
+                        fi
+                    else
+                        final_status[$idx]="${CLR_RED}[✗] Failed${CLR_RESET}"
+                    fi
+
+                    # If not interactive, log immediately as each item completes
+                    if [[ "$is_interactive" -eq 0 ]]; then
+                        if [[ $code -eq 0 ]]; then
+                            log_success "${task_names[$idx]} ready (${sz})."
+                        else
+                            log_error "${task_names[$idx]} download failed."
+                        fi
+                    fi
+                else
+                    all_done=0
+                fi
+            fi
+        done
+
+        # If any worker failed, abort immediately!
+        for idx in 0 1 2 3; do
+            if [[ ${exit_codes[$idx]} -gt 0 ]]; then
+                kill_workers
+                if [[ "$is_interactive" -eq 1 ]]; then
+                    printf "\n"
+                fi
+                log_error "Parallel worker failed: ${task_names[$idx]}"
+                if [[ -f "${logs[$idx]}" ]]; then
+                    cat "${logs[$idx]}" >&2
+                fi
+                rm -rf "$parallel_scratch"
+                return 1
+            fi
+        done
+
+        if [[ $all_done -eq 1 ]]; then
+            break
+        fi
+
+        # Update display
+        if [[ "$is_interactive" -eq 1 ]]; then
+            local spin="${spin_chars[$spin_idx]}"
+            spin_idx=$(( (spin_idx + 1) % spin_len ))
+
+            # Move cursor up 4 lines
+            printf "\033[4A\r"
+            for idx in 0 1 2 3; do
+                if [[ ${exit_codes[$idx]} -eq -1 ]]; then
+                    local current_sz
+                    current_sz="$(get_path_size_mb "${paths[$idx]}")"
+                    local action="Downloading..."
+                    [[ $idx -eq 3 ]] && action="Cloning repo..."
+                    printf "\033[2K  [%d/4] %-26s : %s%s%s %s (%s)\n" \
+                        "$((idx + 1))" "${task_names[$idx]}" \
+                        "${CLR_CYAN}" "$spin" "${CLR_RESET}" \
+                        "$action" "$current_sz"
+                else
+                    printf "\033[2K  [%d/4] %-26s : %s\n" \
+                        "$((idx + 1))" "${task_names[$idx]}" "${final_status[$idx]}"
+                fi
+            done
+        else
+            # Non-TTY periodic log every 5 seconds (10 ticks)
+            tick=$((tick + 1))
+            if [[ $((tick - last_non_tty_report)) -ge 10 ]]; then
+                last_non_tty_report=$tick
+                local sz_jdk
+                local sz_cmd
+                local sz_grd
+                local sz_flt
+                sz_jdk="$(get_path_size_mb "$jdk_tar")"
+                sz_cmd="$(get_path_size_mb "$cmdline_zip")"
+                sz_grd="$(get_path_size_mb "$gradle_zip")"
+                sz_flt="$(get_path_size_mb "$flutter_home")"
+                log_info "Ingestion progress: JDK (${sz_jdk}) | Cmdline (${sz_cmd}) | Gradle (${sz_grd}) | Flutter (${sz_flt})"
+            fi
+        fi
+
+        sleep 0.5
+    done
+
+    # Final interactive redraw showing all completed
+    if [[ "$is_interactive" -eq 1 ]]; then
+        printf "\033[4A\r"
+        for idx in 0 1 2 3; do
+            printf "\033[2K  [%d/4] %-26s : %s\n" \
+                "$((idx + 1))" "${task_names[$idx]}" "${final_status[$idx]}"
+        done
+        printf "\n"
     fi
-    log_success "Android SDK cmdline-tools downloaded."
 
-    # Immediate Stage: Extract JDK & cmdline-tools so sdkmanager can start packages early!
-    log_info "Configuring JDK & cmdline-tools..."
+    local download_elapsed=$(( $(date +%s) - start_time ))
+    log_success "All concurrent downloads finished in ${download_elapsed}s."
+
+    # --------------------------------------------------------------------------
+    # Staged Toolchain Assembly & Configuration Pipeline
+    # --------------------------------------------------------------------------
+    log_info "Configuring Eclipse Temurin OpenJDK ${cfg_jdk}..."
     install_jdk "$cfg_jdk" "$jdk_install_dir" "false" "$is_verbose" "$jdk_tar"
+
+    log_info "Configuring Android SDK Command-line Tools and Packages..."
     install_android_sdk "$cfg_api" "$cfg_bt" "$cfg_ndk" "$cfg_cmake" "$android_home" "false" "$is_verbose" "$cmdline_zip"
 
-    # Wait for Gradle
-    if ! wait "$pid_gradle"; then
-        log_error "Gradle download failed. Worker log:"
-        cat "$log_gradle" >&2
-        kill_workers
-        rm -rf "$parallel_scratch"
-        return 1
+    if [[ "$cfg_gradle" != "skip" && -n "$cfg_gradle" ]]; then
+        log_info "Configuring Gradle ${cfg_gradle}..."
+        install_gradle "$cfg_gradle" "$gradle_install_dir" "false" "$is_verbose" "$gradle_zip"
     fi
-    log_success "Gradle ${cfg_gradle} downloaded."
-    install_gradle "$cfg_gradle" "$gradle_install_dir" "false" "$is_verbose" "$gradle_zip"
 
-    # Wait for Flutter
-    if ! wait "$pid_flutter"; then
-        log_error "Flutter repository clone failed. Worker log:"
-        cat "$log_flutter" >&2
-        kill_workers
-        rm -rf "$parallel_scratch"
-        return 1
-    fi
-    log_success "Flutter repository ready."
+    log_info "Configuring Flutter SDK (${cfg_flutter})..."
     install_flutter "$cfg_flutter" "$flutter_home" "$android_home" "$macos_tools" "false" "$is_verbose"
 
-    local elapsed=$(( $(date +%s) - start_time ))
-    log_success "All toolchain components ingested in ${elapsed}s (parallel execution)."
+    local total_elapsed=$(( $(date +%s) - start_time ))
+    log_success "All toolchain components ingested & configured in ${total_elapsed}s."
 
     # Append worker logs to central log
     {
         echo "=== Parallel Ingestion Logs ==="
-        cat "$log_jdk" "$log_cmd" "$log_gradle" "$log_flutter" 2>/dev/null || true
-    } >> "${DEFAULT_LOG_FILE:-${HOME}/.mobile-toolchain-setup.log}" 2>/dev/null || true
+        echo "--- JDK Log ---"
+        cat "$log_jdk" 2>/dev/null || true
+        echo "--- Android Cmdline Log ---"
+        cat "$log_cmd" 2>/dev/null || true
+        echo "--- Gradle Log ---"
+        cat "$log_gradle" 2>/dev/null || true
+        echo "--- Flutter Log ---"
+        cat "$log_flutter" 2>/dev/null || true
+    } >> "${LOG_FILE:-/tmp/.mobile-toolchain-setup.log}" 2>/dev/null || true
 
     rm -rf "$parallel_scratch"
+    trap - INT TERM
     return 0
 }
