@@ -42,10 +42,10 @@ fi
 
 chmod +x "${TMP_DIR}/unix/install.sh" "${TMP_DIR}/unix/lib/"*.sh
 
-# 3. If standard input is piped (e.g. curl | bash), reconnect to /dev/tty for interactive menus
+# 3. Execute the toolchain installer with all forwarded CLI arguments
+# If stdin was piped (e.g. curl | bash), redirect /dev/tty into the child installer
 if [[ ! -t 0 && -c /dev/tty ]]; then
-    exec < /dev/tty
+    "${TMP_DIR}/unix/install.sh" "$@" < /dev/tty
+else
+    "${TMP_DIR}/unix/install.sh" "$@"
 fi
-
-# 4. Execute the toolchain installer with all forwarded CLI arguments
-exec "${TMP_DIR}/unix/install.sh" "$@"

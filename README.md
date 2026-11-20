@@ -133,14 +133,17 @@ You do **not** need to install `git` or manually clone the repository! Run the o
 
 #### **macOS & Linux (bash / zsh)**
 ```bash
-# Interactive setup (prompts for Recommended LTS vs Custom mode):
+# Recommended one-liner (interactive menu: Recommended LTS vs Custom mode):
+/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/frozenlabx/flutter-kick/main/install.sh)"
+
+# Or via piped execution:
 curl -fsSL https://raw.githubusercontent.com/frozenlabx/flutter-kick/main/install.sh | bash
 
 # Non-interactive quick installation with verified LTS defaults:
-curl -fsSL https://raw.githubusercontent.com/frozenlabx/flutter-kick/main/install.sh | bash -s -- --default
+/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/frozenlabx/flutter-kick/main/install.sh)" -- --default
 
 # Dry-run simulation (preview all actions without writing to disk):
-curl -fsSL https://raw.githubusercontent.com/frozenlabx/flutter-kick/main/install.sh | bash -s -- --dry-run
+/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/frozenlabx/flutter-kick/main/install.sh)" -- --dry-run
 ```
 
 #### **Windows (PowerShell)**
