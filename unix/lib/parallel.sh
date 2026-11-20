@@ -313,7 +313,7 @@ run_parallel_ingestion() {
     if [[ "$is_interactive" -eq 1 ]]; then
         local i
         for i in 0 1 2 3; do
-            printf "  [%d/4] %-26s : %s Connecting...\n" "$((i + 1))" "${task_names[$i]}" "${CLR_CYAN}⠋${CLR_RESET}"
+            printf "  [%d/4] %-26s : %s Connecting...\n" "$((i + 1))" "${task_names[i]}" "${CLR_CYAN}⠋${CLR_RESET}"
         done
     fi
 
@@ -327,35 +327,35 @@ run_parallel_ingestion() {
         # Check each worker status
         local idx
         for idx in 0 1 2 3; do
-            if [[ ${exit_codes[$idx]} -eq -1 ]]; then
-                if ! kill -0 "${pids[$idx]}" 2>/dev/null; then
+            if [[ ${exit_codes[idx]} -eq -1 ]]; then
+                if ! kill -0 "${pids[idx]}" 2>/dev/null; then
                     local code=0
-                    if wait "${pids[$idx]}"; then
+                    if wait "${pids[idx]}"; then
                         code=0
                     else
                         code=$?
                     fi
-                    exit_codes[$idx]=$code
+                    exit_codes[idx]=$code
 
                     local sz
-                    sz="$(get_path_size_mb "${paths[$idx]}")"
+                    sz="$(get_path_size_mb "${paths[idx]}")"
 
                     if [[ $code -eq 0 ]]; then
-                        if [[ -f "${logs[$idx]}" ]] && grep -q -E "(skipped|already exists|FVM mode)" "${logs[$idx]}"; then
-                            final_status[$idx]="${CLR_YELLOW}[-] Up-to-date / Skipped${CLR_RESET}"
+                        if [[ -f "${logs[idx]}" ]] && grep -q -E "(skipped|already exists|FVM mode)" "${logs[idx]}"; then
+                            final_status[idx]="${CLR_YELLOW}[-] Up-to-date / Skipped${CLR_RESET}"
                         else
-                            final_status[$idx]="${CLR_GREEN}[✓] Complete 100% (${sz})${CLR_RESET}"
+                            final_status[idx]="${CLR_GREEN}[✓] Complete 100% (${sz})${CLR_RESET}"
                         fi
                     else
-                        final_status[$idx]="${CLR_RED}[✗] Failed${CLR_RESET}"
+                        final_status[idx]="${CLR_RED}[✗] Failed${CLR_RESET}"
                     fi
 
                     # If not interactive, log immediately as each item completes
                     if [[ "$is_interactive" -eq 0 ]]; then
                         if [[ $code -eq 0 ]]; then
-                            log_success "${task_names[$idx]} ready (${sz})."
+                            log_success "${task_names[idx]} ready (${sz})."
                         else
-                            log_error "${task_names[$idx]} download failed."
+                            log_error "${task_names[idx]} download failed."
                         fi
                     fi
                 else
@@ -366,14 +366,14 @@ run_parallel_ingestion() {
 
         # If any worker failed, abort immediately!
         for idx in 0 1 2 3; do
-            if [[ ${exit_codes[$idx]} -gt 0 ]]; then
+            if [[ ${exit_codes[idx]} -gt 0 ]]; then
                 kill_workers
                 if [[ "$is_interactive" -eq 1 ]]; then
                     printf "\n"
                 fi
-                log_error "Download worker failed: ${task_names[$idx]}"
-                if [[ -f "${logs[$idx]}" ]]; then
-                    cat "${logs[$idx]}" >&2
+                log_error "Download worker failed: ${task_names[idx]}"
+                if [[ -f "${logs[idx]}" ]]; then
+                    cat "${logs[idx]}" >&2
                 fi
                 rm -rf "$parallel_scratch"
                 return 1
@@ -386,30 +386,30 @@ run_parallel_ingestion() {
 
         # Update display
         if [[ "$is_interactive" -eq 1 ]]; then
-            local spin="${spin_chars[$spin_idx]}"
+            local spin="${spin_chars[spin_idx]}"
             spin_idx=$(( (spin_idx + 1) % spin_len ))
 
             # Move cursor up 4 lines
             printf "\033[4A\r"
             for idx in 0 1 2 3; do
-                if [[ ${exit_codes[$idx]} -eq -1 ]]; then
+                if [[ ${exit_codes[idx]} -eq -1 ]]; then
                     local prog_str
                     if [[ $idx -eq 3 ]]; then
-                        prog_str="$(get_git_progress "${logs[$idx]}" "${paths[$idx]}")"
+                        prog_str="$(get_git_progress "${logs[idx]}" "${paths[idx]}")"
                         printf "\033[2K  [%d/4] %-26s : %s%s%s Cloning repo... %s\n" \
-                            "$((idx + 1))" "${task_names[$idx]}" \
+                            "$((idx + 1))" "${task_names[idx]}" \
                             "${CLR_CYAN}" "$spin" "${CLR_RESET}" \
                             "$prog_str"
                     else
-                        prog_str="$(get_curl_progress "${logs[$idx]}" "${paths[$idx]}")"
+                        prog_str="$(get_curl_progress "${logs[idx]}" "${paths[idx]}")"
                         printf "\033[2K  [%d/4] %-26s : %s%s%s Downloading... %s\n" \
-                            "$((idx + 1))" "${task_names[$idx]}" \
+                            "$((idx + 1))" "${task_names[idx]}" \
                             "${CLR_CYAN}" "$spin" "${CLR_RESET}" \
                             "$prog_str"
                     fi
                 else
                     printf "\033[2K  [%d/4] %-26s : %s\n" \
-                        "$((idx + 1))" "${task_names[$idx]}" "${final_status[$idx]}"
+                        "$((idx + 1))" "${task_names[idx]}" "${final_status[idx]}"
                 fi
             done
         else
@@ -433,7 +433,7 @@ run_parallel_ingestion() {
         printf "\033[4A\r"
         for idx in 0 1 2 3; do
             printf "\033[2K  [%d/4] %-26s : %s\n" \
-                "$((idx + 1))" "${task_names[$idx]}" "${final_status[$idx]}"
+                "$((idx + 1))" "${task_names[idx]}" "${final_status[idx]}"
         done
         printf "\n"
     fi

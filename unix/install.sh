@@ -116,7 +116,6 @@ EOF
 # ------------------------------------------------------------------------------
 MODE=""
 DRY_RUN=false
-PARALLEL_MODE=true
 UNINSTALL=false
 AUTO_CONFIRM=false
 VERBOSE=0
