@@ -9,7 +9,8 @@ function Install-WindowsGradle {
     param (
         [string]$TargetVersion = "8.11.1",
         [string]$InstallDir = (Join-Path $env:USERPROFILE ".local\share\gradle"),
-        [bool]$DryRun = $false
+        [bool]$DryRun = $false,
+        [string]$PredownloadedArchive = ""
     )
     if ($TargetVersion -eq "skip" -or [string]::IsNullOrWhiteSpace($TargetVersion)) {
         Write-LogInfo "Skipping Gradle installation as requested."
@@ -50,9 +51,14 @@ function Install-WindowsGradle {
     $tmpZip = Join-Path $tmpDir "gradle-$TargetVersion-bin.zip"
 
     try {
-        Write-LogInfo "Downloading Gradle $TargetVersion from $downloadUrl..."
-        [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
-        Invoke-WebRequest -Uri $downloadUrl -OutFile $tmpZip -UseBasicParsing -TimeoutSec 120
+        if ($PredownloadedArchive -and (Test-Path $PredownloadedArchive)) {
+            Copy-Item -Path $PredownloadedArchive -Destination $tmpZip -Force
+        }
+        else {
+            Write-LogInfo "Downloading Gradle $TargetVersion from $downloadUrl..."
+            [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+            Invoke-WebRequest -Uri $downloadUrl -OutFile $tmpZip -UseBasicParsing -TimeoutSec 120
+        }
 
         Write-LogInfo "Extracting Gradle into $InstallDir..."
         Expand-Archive -Path $tmpZip -DestinationPath $InstallDir -Force

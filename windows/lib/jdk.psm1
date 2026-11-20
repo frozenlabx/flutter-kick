@@ -10,7 +10,8 @@ function Install-WindowsJDK {
         [string]$TargetVersion = "17",
         [string]$InstallRoot = (Join-Path $env:USERPROFILE ".local\share\jdks"),
         [string]$Architecture = "x64",
-        [bool]$DryRun = $false
+        [bool]$DryRun = $false,
+        [string]$PredownloadedArchive = ""
     )
     Write-LogStep "Installing / Verifying JDK $TargetVersion"
 
@@ -51,8 +52,13 @@ function Install-WindowsJDK {
     $tmpZip = Join-Path $tmpDir "temurin-$TargetVersion.zip"
 
     try {
-        [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
-        Invoke-WebRequest -Uri $adoptiumUrl -OutFile $tmpZip -UseBasicParsing -TimeoutSec 60
+        if ($PredownloadedArchive -and (Test-Path $PredownloadedArchive)) {
+            Copy-Item -Path $PredownloadedArchive -Destination $tmpZip -Force
+        }
+        else {
+            [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+            Invoke-WebRequest -Uri $adoptiumUrl -OutFile $tmpZip -UseBasicParsing -TimeoutSec 60
+        }
     }
     catch {
         Write-LogError "Failed to download OpenJDK ${TargetVersion}: $($_.Exception.Message)"

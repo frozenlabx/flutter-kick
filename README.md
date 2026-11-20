@@ -228,7 +228,18 @@ Each prompt provides available options, popular versions, and helpful tips:
 | **Flutter SDK** | `stable` | `stable` (LTS), `beta`, `master`, `<git-tag>`, `fvm` | FVM installs Flutter Version Management |
 | **macOS iOS Tools** | `yes` | `yes`, `no` | Xcode Command Line Tools & CocoaPods |
 
-### 3. Non-Interactive CLI Automation
+### 3. High-Speed Parallel Mode (Default) & Sequential Fallback
+
+`flutter-kick` executes **concurrent background downloads** by default across 4 worker threads (JDK, Android cmdline-tools, Gradle, and Flutter clone). As soon as the JDK and cmdline-tools finish downloading, extraction and `sdkmanager` package installations begin immediately while Gradle and Flutter finalize.
+
+- **Default (Parallel Ingestion ~50-60% faster)**:
+  - **Unix**: `./unix/install.sh --default`
+  - **Windows**: `.\windows\install.ps1 -Default`
+- **Force Sequential Execution (For slow or metered connections)**:
+  - **Unix**: `./unix/install.sh --default --sequential`
+  - **Windows**: `.\windows\install.ps1 -Default -Sequential`
+
+### 4. Non-Interactive CLI Automation
 
 Pass component flags directly to bypass all interactive prompts:
 

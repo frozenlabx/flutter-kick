@@ -201,6 +201,7 @@ install_android_sdk() {
     local sdk_root="${5:-}"
     local is_dry_run="${6:-false}"
     local is_verbose="${7:-0}"
+    local predownloaded_zip="${8:-}"
     [[ "$is_verbose" -eq 1 ]] && export VERBOSE=1
 
     log_step "Configuring Headless Android SDK"
@@ -279,7 +280,9 @@ install_android_sdk() {
         local tmp_zip="${tmp_dir}/cmdline-tools.zip"
 
         log_info "Downloading cmdline-tools package from ${cmdline_url}..."
-        if ! curl -fSL --connect-timeout 10 --retry 2 -o "$tmp_zip" "$cmdline_url"; then
+        if [[ -n "$predownloaded_zip" && -f "$predownloaded_zip" ]]; then
+            cp "$predownloaded_zip" "$tmp_zip"
+        elif ! curl -fSL --connect-timeout 10 --retry 2 -o "$tmp_zip" "$cmdline_url"; then
             log_error "Failed to download Android command-line tools."
             rm -rf "$tmp_dir"
             return 1

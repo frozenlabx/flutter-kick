@@ -21,6 +21,7 @@ install_jdk() {
     local install_root="${2:-${DEFAULT_JDK_INSTALL_DIR:-${HOME}/.local/share/jdks}}"
     local is_dry_run="${3:-false}"
     local is_verbose="${4:-0}"
+    local predownloaded_tar="${5:-}"
     [[ "$is_verbose" -eq 1 ]] && export VERBOSE=1
 
     log_step "Installing / Verifying JDK ${target_ver}"
@@ -120,7 +121,10 @@ install_jdk() {
     log_debug "Adoptium URL: ${adoptium_api_url}"
 
     local download_success=false
-    if command -v curl >/dev/null 2>&1; then
+    if [[ -n "$predownloaded_tar" && -f "$predownloaded_tar" ]]; then
+        cp "$predownloaded_tar" "$tmp_tar"
+        download_success=true
+    elif command -v curl >/dev/null 2>&1; then
         if curl -fSL --connect-timeout 10 --retry 2 -o "$tmp_tar" "$adoptium_api_url" 2>/dev/null; then
             download_success=true
         fi

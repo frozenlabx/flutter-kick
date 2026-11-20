@@ -17,6 +17,7 @@ install_gradle() {
     local install_dir="${2:-${DEFAULT_GRADLE_INSTALL_DIR:-${HOME}/.local/share/gradle}}"
     local is_dry_run="${3:-false}"
     local is_verbose="${4:-0}"
+    local predownloaded_zip="${5:-}"
     [[ "$is_verbose" -eq 1 ]] && export VERBOSE=1
 
     if [[ "$target_ver" == "skip" || -z "$target_ver" ]]; then
@@ -58,7 +59,9 @@ install_gradle() {
     local tmp_zip="${tmp_dir}/gradle-${target_ver}-bin.zip"
 
     log_info "Downloading Gradle ${target_ver} from ${download_url}..."
-    if ! curl -fSL --connect-timeout 10 --retry 2 -o "$tmp_zip" "$download_url"; then
+    if [[ -n "$predownloaded_zip" && -f "$predownloaded_zip" ]]; then
+        cp "$predownloaded_zip" "$tmp_zip"
+    elif ! curl -fSL --connect-timeout 10 --retry 2 -o "$tmp_zip" "$download_url"; then
         log_error "Failed to download Gradle ${target_ver}."
         rm -rf "$tmp_dir"
         return 1

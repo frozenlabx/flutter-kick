@@ -1,10 +1,12 @@
-# ==============================================================================
+﻿# ==============================================================================
 # mobile-toolchain-setup: Windows PowerShell Entrypoint
 # Automates headless Android SDK & Flutter development environment setup
 # ==============================================================================
 [CmdletBinding()]
 param (
     [switch]$Default,
+    [switch]$Parallel,
+    [switch]$Sequential,
     [switch]$DryRun,
     [switch]$Uninstall,
     [switch]$Yes,
@@ -35,6 +37,7 @@ Import-Module (Join-Path $libDir "jdk.psm1") -Force
 Import-Module (Join-Path $libDir "android.psm1") -Force
 Import-Module (Join-Path $libDir "gradle.psm1") -Force
 Import-Module (Join-Path $libDir "flutter.psm1") -Force
+Import-Module (Join-Path $libDir "parallel.psm1") -Force
 
 # Read single source of truth defaults
 $defaultsPath = Join-Path $configDir "defaults.env"
@@ -216,46 +219,68 @@ if (-not $gitOk -and -not $DryRun) {
 # ------------------------------------------------------------------------------
 Write-LogStep "4" "7" "Installing Toolchain Components"
 
-# JDK
-$jdkResult = Install-WindowsJDK `
-    -TargetVersion $cfgJdk `
-    -InstallRoot $resolvedJdkDir `
-    -Architecture $osInfo.Architecture `
-    -DryRun $DryRun
+$isParallel = (-not $Sequential)
 
-if ($jdkResult -and $jdkResult.JavaHome) {
-    $resolvedJavaHome = $jdkResult.JavaHome
+if ($isParallel) {
+    Invoke-WindowsParallelIngestion `
+        -JdkVer $cfgJdk `
+        -ApiVer $cfgApi `
+        -BuildToolsVer $cfgBuildTools `
+        -NdkVer $cfgNdk `
+        -CmakeVer $cfgCmake `
+        -GradleVer $cfgGradle `
+        -FlutterChannel $cfgFlutter `
+        -JdkInstallDir $resolvedJdkDir `
+        -SdkRoot $resolvedAndroidHome `
+        -GradleInstallDir $resolvedGradleDir `
+        -FlutterHome $resolvedFlutterHome `
+        -Architecture $osInfo.Architecture `
+        -FallbackCmdlineUrl $cfg['CMDLINE_TOOLS_URL_WIN'] `
+        -DryRun $DryRun
 }
+else {
+    # Sequential execution fallback
+    # JDK
+    $jdkResult = Install-WindowsJDK `
+        -TargetVersion $cfgJdk `
+        -InstallRoot $resolvedJdkDir `
+        -Architecture $osInfo.Architecture `
+        -DryRun $DryRun
 
-# Android SDK
-$androidResult = Install-WindowsAndroidSDK `
-    -ApiArg $cfgApi `
-    -BuildToolsArg $cfgBuildTools `
-    -NdkArg $cfgNdk `
-    -CmakeArg $cfgCmake `
-    -SdkRoot $resolvedAndroidHome `
-    -FallbackCmdlineUrl $cfg['CMDLINE_TOOLS_URL_WIN'] `
-    -DryRun $DryRun
+    if ($jdkResult -and $jdkResult.JavaHome) {
+        $resolvedJavaHome = $jdkResult.JavaHome
+    }
 
-# Gradle
-$gradleResult = Install-WindowsGradle `
-    -TargetVersion $cfgGradle `
-    -InstallDir $resolvedGradleDir `
-    -DryRun $DryRun
+    # Android SDK
+    $androidResult = Install-WindowsAndroidSDK `
+        -ApiArg $cfgApi `
+        -BuildToolsArg $cfgBuildTools `
+        -NdkArg $cfgNdk `
+        -CmakeArg $cfgCmake `
+        -SdkRoot $resolvedAndroidHome `
+        -FallbackCmdlineUrl $cfg['CMDLINE_TOOLS_URL_WIN'] `
+        -DryRun $DryRun
 
-if ($gradleResult -and $gradleResult.GradleHome) {
-    $resolvedGradleHome = $gradleResult.GradleHome
-}
+    # Gradle
+    $gradleResult = Install-WindowsGradle `
+        -TargetVersion $cfgGradle `
+        -InstallDir $resolvedGradleDir `
+        -DryRun $DryRun
 
-# Flutter
-$flutterResult = Install-WindowsFlutter `
-    -Channel $cfgFlutter `
-    -FlutterRoot $resolvedFlutterHome `
-    -AndroidSdk $resolvedAndroidHome `
-    -DryRun $DryRun
+    if ($gradleResult -and $gradleResult.GradleHome) {
+        $resolvedGradleHome = $gradleResult.GradleHome
+    }
 
-if ($flutterResult -and $flutterResult.FlutterHome) {
-    $resolvedFlutterHome = $flutterResult.FlutterHome
+    # Flutter
+    $flutterResult = Install-WindowsFlutter `
+        -Channel $cfgFlutter `
+        -FlutterRoot $resolvedFlutterHome `
+        -AndroidSdk $resolvedAndroidHome `
+        -DryRun $DryRun
+
+    if ($flutterResult -and $flutterResult.FlutterHome) {
+        $resolvedFlutterHome = $flutterResult.FlutterHome
+    }
 }
 
 # ------------------------------------------------------------------------------

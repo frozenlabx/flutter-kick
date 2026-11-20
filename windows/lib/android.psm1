@@ -120,7 +120,8 @@ function Install-WindowsAndroidSDK {
         [string]$CmakeArg = "3.22.1",
         [string]$SdkRoot = (Join-Path $env:USERPROFILE "AppData\Local\Android\Sdk"),
         [string]$FallbackCmdlineUrl = "https://dl.google.com/android/repository/commandlinetools-win-11076708_latest.zip",
-        [bool]$DryRun = $false
+        [bool]$DryRun = $false,
+        [string]$PredownloadedArchive = ""
     )
     Write-LogStep "Configuring Headless Android SDK (Windows)"
 
@@ -174,8 +175,13 @@ function Install-WindowsAndroidSDK {
         $tmpZip = Join-Path $tmpDir "cmdline-tools.zip"
 
         try {
-            [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
-            Invoke-WebRequest -Uri $cmdlineUrl -OutFile $tmpZip -UseBasicParsing -TimeoutSec 120
+            if ($PredownloadedArchive -and (Test-Path $PredownloadedArchive)) {
+                Copy-Item -Path $PredownloadedArchive -Destination $tmpZip -Force
+            }
+            else {
+                [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+                Invoke-WebRequest -Uri $cmdlineUrl -OutFile $tmpZip -UseBasicParsing -TimeoutSec 120
+            }
             $extractTmp = Join-Path $tmpDir "extracted"
             Expand-Archive -Path $tmpZip -DestinationPath $extractTmp -Force
 
