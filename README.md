@@ -1,10 +1,16 @@
-# Flutter-Kick
+<p align="center">
+  <img src="assets/logo.svg" width="128" height="128" alt="Flutter-Kick Logo" />
+</p>
 
-[![CI](https://github.com/frozenlabx/flutter-kick/actions/workflows/ci.yml/badge.svg)](https://github.com/frozenlabx/flutter-kick/actions/workflows/ci.yml)
-[![Shell](https://img.shields.io/badge/shell-POSIX%2FBash%203.2%2B-blue.svg)](https://www.gnu.org/software/bash/)
-[![PowerShell](https://img.shields.io/badge/powershell-5.1%20%7C%207%2B-blue.svg)](https://microsoft.com/powershell)
-[![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20%7C%20Windows-lightgrey.svg)](#supported-platforms)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+<h1 align="center">Flutter-Kick</h1>
+
+<p align="center">
+  <a href="https://github.com/frozenlabx/flutter-kick/actions/workflows/ci.yml"><img src="https://github.com/frozenlabx/flutter-kick/actions/workflows/ci.yml/badge.svg" alt="CI" /></a>
+  <a href="https://www.gnu.org/software/bash/"><img src="https://img.shields.io/badge/shell-POSIX%2FBash%203.2%2B-blue.svg" alt="Shell" /></a>
+  <a href="https://microsoft.com/powershell"><img src="https://img.shields.io/badge/powershell-5.1%20%7C%207%2B-blue.svg" alt="PowerShell" /></a>
+  <a href="#supported-platforms"><img src="https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20%7C%20Windows-lightgrey.svg" alt="Platform" /></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-yellow.svg" alt="License: MIT" /></a>
+</p>
 
 A lightweight, automated bootstrapper that configures a complete **headless Android SDK and Flutter toolchain** without Android Studio (~4+ GB disk saved).
 
