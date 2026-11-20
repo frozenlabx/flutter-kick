@@ -2,7 +2,7 @@
 # ==============================================================================
 # mobile-toolchain-setup: Parallel Ingestion Module
 # Concurrently pre-fetches JDK, Android cmdline-tools, Gradle, and Flutter SDK
-# Provides live, real-time progress indicators for all concurrent workers
+# Displays live percentage progress indicators for all components
 # ==============================================================================
 set -euo pipefail
 
@@ -34,7 +34,7 @@ if [[ -f "${SCRIPT_LIB_DIR}/flutter.sh" ]]; then
 fi
 
 # ------------------------------------------------------------------------------
-# Size Inspection Helper (POSIX / macOS / Linux compatible)
+# Size & Progress Inspection Helpers (POSIX / macOS / Linux compatible)
 # ------------------------------------------------------------------------------
 get_path_size_mb() {
     local target="$1"
@@ -61,8 +61,62 @@ get_path_size_mb() {
     echo "0.0 MB"
 }
 
+get_curl_progress() {
+    local log_file="$1"
+    local path="$2"
+    if [[ -f "$log_file" ]]; then
+        local line
+        line="$(tail -c 1200 "$log_file" 2>/dev/null | tr '\r' '\n' | grep -E "^[ ]*[0-9]+[ ]+[0-9]+[kMGT]?" | tail -n 1 || true)"
+        if [[ -n "$line" ]]; then
+            local pct
+            local tot
+            local rcv
+            pct="$(echo "$line" | awk '{print $1}')"
+            tot="$(echo "$line" | awk '{print $2}')"
+            rcv="$(echo "$line" | awk '{print $4}')"
+            if [[ -n "$pct" && "$pct" =~ ^[0-9]+$ ]]; then
+                echo "${pct}% (${rcv}/${tot})"
+                return 0
+            fi
+        fi
+    fi
+    local sz
+    sz="$(get_path_size_mb "$path")"
+    if [[ "$sz" != "0.0 MB" ]]; then
+        echo "${sz}"
+        return 0
+    fi
+    echo "0%"
+}
+
+get_git_progress() {
+    local log_file="$1"
+    local path="$2"
+    if [[ -f "$log_file" ]]; then
+        local line
+        line="$(tail -c 800 "$log_file" 2>/dev/null | tr '\r' '\n' | grep -E "(Receiving objects|Resolving deltas)" | tail -n 1 || true)"
+        if [[ -n "$line" ]]; then
+            local pct
+            pct="$(echo "$line" | grep -o -E "[0-9]+%" | head -n1 || true)"
+            local sz
+            sz="$(get_path_size_mb "$path")"
+            if [[ -n "$pct" ]]; then
+                echo "${pct} (${sz})"
+                return 0
+            fi
+        fi
+    fi
+    local sz
+    sz="$(get_path_size_mb "$path")"
+    if [[ "$sz" != "0.0 MB" ]]; then
+        echo "${sz}"
+        return 0
+    fi
+    echo "0%"
+}
+
 # ------------------------------------------------------------------------------
-# Parallel Download Workers
+# Download Workers
 # ------------------------------------------------------------------------------
 fetch_jdk_asset() {
     local target_ver="$1"
@@ -178,15 +232,14 @@ run_parallel_ingestion() {
     [[ "$is_verbose" -eq 1 ]] && export VERBOSE=1
 
     if [[ "$is_dry_run" == "true" ]]; then
-        log_info "Parallel Toolchain Ingestion enabled (4 concurrent download workers)"
-        log_dry_run "Parallel Worker 1: Fetch Eclipse Temurin JDK ${cfg_jdk}"
-        log_dry_run "Parallel Worker 2: Fetch Android SDK cmdline-tools"
-        log_dry_run "Parallel Worker 3: Fetch Gradle ${cfg_gradle} distribution"
-        log_dry_run "Parallel Worker 4: Clone Flutter SDK (${cfg_flutter})"
-        log_dry_run "Staged Configuration Pipeline:"
+        log_dry_run "Worker 1: Fetch Eclipse Temurin JDK ${cfg_jdk}"
+        log_dry_run "Worker 2: Fetch Android SDK cmdline-tools"
+        log_dry_run "Worker 3: Fetch Gradle ${cfg_gradle} distribution"
+        log_dry_run "Worker 4: Clone Flutter SDK (${cfg_flutter})"
+        log_dry_run "Configuration Pipeline:"
         log_dry_run "  -> Extract JDK & export JAVA_HOME"
         log_dry_run "  -> Extract cmdline-tools into ${android_home}/cmdline-tools/latest"
-        log_dry_run "  -> Concurrently run sdkmanager packages and Flutter precache"
+        log_dry_run "  -> Run sdkmanager packages"
         log_dry_run "  -> Finalize Flutter Android SDK linkage and doctor licenses"
 
         # Maintain exported environment paths across dry-run
@@ -197,7 +250,6 @@ run_parallel_ingestion() {
         return 0
     fi
 
-    log_step "Parallel Toolchain Ingestion (Concurrent Download & Staged Pipeline)"
     local parallel_scratch
     parallel_scratch="$(mktemp -d "${TMPDIR:-/tmp}/mto-parallel.XXXXXX")"
     local jdk_tar="${parallel_scratch}/temurin-${cfg_jdk}.tar.gz"
@@ -212,7 +264,6 @@ run_parallel_ingestion() {
     local cmdline_url
     cmdline_url="$(resolve_cmdline_tools_url "${OS_TYPE:-linux}")"
 
-    log_info "Spawning 4 concurrent download workers..."
     local start_time
     start_time="$(date +%s)"
 
@@ -262,7 +313,7 @@ run_parallel_ingestion() {
     if [[ "$is_interactive" -eq 1 ]]; then
         local i
         for i in 0 1 2 3; do
-            printf "  [%d/4] %-26s : %s Initializing...\n" "$((i + 1))" "${task_names[$i]}" "${CLR_CYAN}⠋${CLR_RESET}"
+            printf "  [%d/4] %-26s : %s Connecting...\n" "$((i + 1))" "${task_names[$i]}" "${CLR_CYAN}⠋${CLR_RESET}"
         done
     fi
 
@@ -293,7 +344,7 @@ run_parallel_ingestion() {
                         if [[ -f "${logs[$idx]}" ]] && grep -q -E "(skipped|already exists|FVM mode)" "${logs[$idx]}"; then
                             final_status[$idx]="${CLR_YELLOW}[-] Up-to-date / Skipped${CLR_RESET}"
                         else
-                            final_status[$idx]="${CLR_GREEN}[✓] Complete (${sz})${CLR_RESET}"
+                            final_status[$idx]="${CLR_GREEN}[✓] Complete 100% (${sz})${CLR_RESET}"
                         fi
                     else
                         final_status[$idx]="${CLR_RED}[✗] Failed${CLR_RESET}"
@@ -320,7 +371,7 @@ run_parallel_ingestion() {
                 if [[ "$is_interactive" -eq 1 ]]; then
                     printf "\n"
                 fi
-                log_error "Parallel worker failed: ${task_names[$idx]}"
+                log_error "Download worker failed: ${task_names[$idx]}"
                 if [[ -f "${logs[$idx]}" ]]; then
                     cat "${logs[$idx]}" >&2
                 fi
@@ -342,14 +393,20 @@ run_parallel_ingestion() {
             printf "\033[4A\r"
             for idx in 0 1 2 3; do
                 if [[ ${exit_codes[$idx]} -eq -1 ]]; then
-                    local current_sz
-                    current_sz="$(get_path_size_mb "${paths[$idx]}")"
-                    local action="Downloading..."
-                    [[ $idx -eq 3 ]] && action="Cloning repo..."
-                    printf "\033[2K  [%d/4] %-26s : %s%s%s %s (%s)\n" \
-                        "$((idx + 1))" "${task_names[$idx]}" \
-                        "${CLR_CYAN}" "$spin" "${CLR_RESET}" \
-                        "$action" "$current_sz"
+                    local prog_str
+                    if [[ $idx -eq 3 ]]; then
+                        prog_str="$(get_git_progress "${logs[$idx]}" "${paths[$idx]}")"
+                        printf "\033[2K  [%d/4] %-26s : %s%s%s Cloning repo... %s\n" \
+                            "$((idx + 1))" "${task_names[$idx]}" \
+                            "${CLR_CYAN}" "$spin" "${CLR_RESET}" \
+                            "$prog_str"
+                    else
+                        prog_str="$(get_curl_progress "${logs[$idx]}" "${paths[$idx]}")"
+                        printf "\033[2K  [%d/4] %-26s : %s%s%s Downloading... %s\n" \
+                            "$((idx + 1))" "${task_names[$idx]}" \
+                            "${CLR_CYAN}" "$spin" "${CLR_RESET}" \
+                            "$prog_str"
+                    fi
                 else
                     printf "\033[2K  [%d/4] %-26s : %s\n" \
                         "$((idx + 1))" "${task_names[$idx]}" "${final_status[$idx]}"
@@ -360,15 +417,11 @@ run_parallel_ingestion() {
             tick=$((tick + 1))
             if [[ $((tick - last_non_tty_report)) -ge 10 ]]; then
                 last_non_tty_report=$tick
-                local sz_jdk
-                local sz_cmd
-                local sz_grd
-                local sz_flt
-                sz_jdk="$(get_path_size_mb "$jdk_tar")"
-                sz_cmd="$(get_path_size_mb "$cmdline_zip")"
-                sz_grd="$(get_path_size_mb "$gradle_zip")"
-                sz_flt="$(get_path_size_mb "$flutter_home")"
-                log_info "Ingestion progress: JDK (${sz_jdk}) | Cmdline (${sz_cmd}) | Gradle (${sz_grd}) | Flutter (${sz_flt})"
+                local prog_jdk; prog_jdk="$(get_curl_progress "$log_jdk" "$jdk_tar")"
+                local prog_cmd; prog_cmd="$(get_curl_progress "$log_cmd" "$cmdline_zip")"
+                local prog_grd; prog_grd="$(get_curl_progress "$log_gradle" "$gradle_zip")"
+                local prog_flt; prog_flt="$(get_git_progress "$log_flutter" "$flutter_home")"
+                log_info "Downloads: JDK ${prog_jdk} | Cmdline ${prog_cmd} | Gradle ${prog_grd} | Flutter ${prog_flt}"
             fi
         fi
 
@@ -384,9 +437,6 @@ run_parallel_ingestion() {
         done
         printf "\n"
     fi
-
-    local download_elapsed=$(( $(date +%s) - start_time ))
-    log_success "All concurrent downloads finished in ${download_elapsed}s."
 
     # --------------------------------------------------------------------------
     # Staged Toolchain Assembly & Configuration Pipeline
@@ -406,7 +456,7 @@ run_parallel_ingestion() {
     install_flutter "$cfg_flutter" "$flutter_home" "$android_home" "$macos_tools" "false" "$is_verbose"
 
     local total_elapsed=$(( $(date +%s) - start_time ))
-    log_success "All toolchain components ingested & configured in ${total_elapsed}s."
+    log_success "All toolchain components configured in ${total_elapsed}s."
 
     # Append worker logs to central log
     {

@@ -86,8 +86,6 @@ Modes:
 
 Options:
   -d, --default             Use recommended LTS defaults with zero interactive prompts
-  -p, --parallel            Enable concurrent asset ingestion (Default: enabled)
-  -s, --sequential          Disable concurrency and run all steps sequentially
   -n, --dry-run             Simulate all operations without modifying filesystem or configs
   -u, --uninstall           Cleanly remove mobile-toolchain markers and installed SDKs
   -y, --yes                 Automatically answer 'yes' to confirmation prompts
@@ -139,11 +137,6 @@ while [[ $# -gt 0 ]]; do
             shift
             ;;
         -p|--parallel)
-            PARALLEL_MODE=true
-            shift
-            ;;
-        -s|--sequential)
-            PARALLEL_MODE=false
             shift
             ;;
         -n|--dry-run)
@@ -412,26 +405,11 @@ install_prerequisites "$DRY_RUN"
 # ------------------------------------------------------------------------------
 log_step "4" "7" "Installing Toolchain Components"
 
-if [[ "$PARALLEL_MODE" == "true" ]]; then
-    run_parallel_ingestion \
-        "$CFG_JDK" "$CFG_API" "$CFG_BUILD_TOOLS" "$CFG_NDK" "$CFG_CMAKE" \
-        "$CFG_GRADLE" "$CFG_FLUTTER" "$JDK_INSTALL_DIR" "$ANDROID_HOME" \
-        "$GRADLE_INSTALL_DIR" "$FLUTTER_HOME" "$CFG_MACOS_IOS_TOOLS" \
-        "$DRY_RUN" "$VERBOSE"
-else
-    # Sequential execution fallback
-    # JDK
-    install_jdk "$CFG_JDK" "$JDK_INSTALL_DIR" "$DRY_RUN" "$VERBOSE"
-
-    # Android SDK
-    install_android_sdk "$CFG_API" "$CFG_BUILD_TOOLS" "$CFG_NDK" "$CFG_CMAKE" "$ANDROID_HOME" "$DRY_RUN" "$VERBOSE"
-
-    # Gradle
-    install_gradle "$CFG_GRADLE" "$GRADLE_INSTALL_DIR" "$DRY_RUN" "$VERBOSE"
-
-    # Flutter
-    install_flutter "$CFG_FLUTTER" "$FLUTTER_HOME" "$ANDROID_HOME" "$CFG_MACOS_IOS_TOOLS" "$DRY_RUN" "$VERBOSE"
-fi
+run_parallel_ingestion \
+    "$CFG_JDK" "$CFG_API" "$CFG_BUILD_TOOLS" "$CFG_NDK" "$CFG_CMAKE" \
+    "$CFG_GRADLE" "$CFG_FLUTTER" "$JDK_INSTALL_DIR" "$ANDROID_HOME" \
+    "$GRADLE_INSTALL_DIR" "$FLUTTER_HOME" "$CFG_MACOS_IOS_TOOLS" \
+    "$DRY_RUN" "$VERBOSE"
 
 if [[ "$CFG_GRADLE" != "skip" ]]; then
     GRADLE_HOME="${GRADLE_INSTALL_DIR}/gradle-${CFG_GRADLE}"

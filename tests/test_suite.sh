@@ -220,13 +220,12 @@ uninstall_dry_out="$("${PROJECT_ROOT}/unix/install.sh" --uninstall --dry-run)"
 assert_contains "Uninstall mode identifies uninstallation" "$uninstall_dry_out" "Starting mobile-toolchain-setup Uninstallation"
 assert_contains "Uninstall dry-run finishes successfully" "$uninstall_dry_out" "Dry-run uninstall simulation complete"
 
-# Parallel vs Sequential mode checks
-parallel_dry_out="$("${PROJECT_ROOT}/unix/install.sh" --dry-run --default --parallel)"
-assert_contains "Parallel mode reports 4 concurrent workers" "$parallel_dry_out" "Parallel Toolchain Ingestion enabled (4 concurrent download workers)"
-assert_contains "Parallel mode logs Worker 1" "$parallel_dry_out" "Parallel Worker 1: Fetch Eclipse Temurin JDK"
-
-seq_dry_out="$("${PROJECT_ROOT}/unix/install.sh" --dry-run --default --sequential)"
-assert_contains "Sequential mode performs standard JDK installation" "$seq_dry_out" "Installing / Verifying JDK 17"
+# Toolchain ingestion dry run checks
+toolchain_dry_out="$("${PROJECT_ROOT}/unix/install.sh" --dry-run --default)"
+assert_contains "Toolchain dry-run logs Worker 1" "$toolchain_dry_out" "Worker 1: Fetch Eclipse Temurin JDK"
+assert_contains "Toolchain dry-run logs Worker 2" "$toolchain_dry_out" "Worker 2: Fetch Android SDK cmdline-tools"
+assert_contains "Toolchain dry-run logs Worker 3" "$toolchain_dry_out" "Worker 3: Fetch Gradle"
+assert_contains "Toolchain dry-run logs Worker 4" "$toolchain_dry_out" "Worker 4: Clone Flutter SDK"
 
 # ------------------------------------------------------------------------------
 # Test 10: Interactive Simulation via Piped Input

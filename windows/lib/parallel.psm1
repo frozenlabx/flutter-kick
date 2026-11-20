@@ -45,15 +45,14 @@ function Invoke-WindowsParallelIngestion {
     )
 
     if ($DryRun) {
-        Write-LogInfo "Parallel Toolchain Ingestion enabled (4 concurrent download workers)"
-        Write-LogDryRun "Parallel Worker 1: Fetch Eclipse Temurin OpenJDK $JdkVer"
-        Write-LogDryRun "Parallel Worker 2: Fetch Android SDK cmdline-tools"
-        Write-LogDryRun "Parallel Worker 3: Fetch Gradle $GradleVer distribution"
-        Write-LogDryRun "Parallel Worker 4: Clone Flutter SDK ($FlutterChannel)"
-        Write-LogDryRun "Staged Configuration Pipeline:"
+        Write-LogDryRun "Worker 1: Fetch Eclipse Temurin OpenJDK $JdkVer"
+        Write-LogDryRun "Worker 2: Fetch Android SDK cmdline-tools"
+        Write-LogDryRun "Worker 3: Fetch Gradle $GradleVer distribution"
+        Write-LogDryRun "Worker 4: Clone Flutter SDK ($FlutterChannel)"
+        Write-LogDryRun "Configuration Pipeline:"
         Write-LogDryRun "  -> Extract JDK & export JAVA_HOME"
         Write-LogDryRun "  -> Extract cmdline-tools into $SdkRoot\cmdline-tools\latest"
-        Write-LogDryRun "  -> Concurrently run sdkmanager packages and Flutter precache"
+        Write-LogDryRun "  -> Run sdkmanager packages"
         Write-LogDryRun "  -> Finalize Flutter Android SDK linkage and doctor licenses"
 
         Install-WindowsJDK -TargetVersion $JdkVer -InstallRoot $JdkInstallDir -Architecture $Architecture -DryRun $true
@@ -63,7 +62,6 @@ function Invoke-WindowsParallelIngestion {
         return
     }
 
-    Write-LogStep "Parallel Toolchain Ingestion (Windows Concurrent Pipeline)"
     $parallelScratch = Join-Path ([System.IO.Path]::GetTempPath()) ("mto-parallel-" + [System.Guid]::NewGuid().ToString())
     New-Item -ItemType Directory -Path $parallelScratch -Force | Out-Null
 
@@ -76,7 +74,6 @@ function Invoke-WindowsParallelIngestion {
     $cmdlineUrl = Resolve-WindowsCmdlineToolsUrl -FallbackUrl $FallbackCmdlineUrl
     $gradleUrl = "https://services.gradle.org/distributions/gradle-$GradleVer-bin.zip"
 
-    Write-LogInfo "Spawning 4 concurrent download workers..."
     $startTime = Get-Date
 
     $jobs = @{}

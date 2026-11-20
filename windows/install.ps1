@@ -1,4 +1,4 @@
-# ==============================================================================
+﻿# ==============================================================================
 # mobile-toolchain-setup: Windows PowerShell Entrypoint
 # Automates headless Android SDK & Flutter development environment setup
 # ==============================================================================
@@ -6,7 +6,6 @@
 param (
     [switch]$Default,
     [switch]$Parallel,
-    [switch]$Sequential,
     [switch]$DryRun,
     [switch]$Uninstall,
     [switch]$Yes,
@@ -219,69 +218,21 @@ if (-not $gitOk -and -not $DryRun) {
 # ------------------------------------------------------------------------------
 Write-LogStep "4" "7" "Installing Toolchain Components"
 
-$isParallel = (-not $Sequential)
-
-if ($isParallel) {
-    Invoke-WindowsParallelIngestion `
-        -JdkVer $cfgJdk `
-        -ApiVer $cfgApi `
-        -BuildToolsVer $cfgBuildTools `
-        -NdkVer $cfgNdk `
-        -CmakeVer $cfgCmake `
-        -GradleVer $cfgGradle `
-        -FlutterChannel $cfgFlutter `
-        -JdkInstallDir $resolvedJdkDir `
-        -SdkRoot $resolvedAndroidHome `
-        -GradleInstallDir $resolvedGradleDir `
-        -FlutterHome $resolvedFlutterHome `
-        -Architecture $osInfo.Architecture `
-        -FallbackCmdlineUrl $cfg['CMDLINE_TOOLS_URL_WIN'] `
-        -DryRun $DryRun
-}
-else {
-    # Sequential execution fallback
-    # JDK
-    $jdkResult = Install-WindowsJDK `
-        -TargetVersion $cfgJdk `
-        -InstallRoot $resolvedJdkDir `
-        -Architecture $osInfo.Architecture `
-        -DryRun $DryRun
-
-    if ($jdkResult -and $jdkResult.JavaHome) {
-        $resolvedJavaHome = $jdkResult.JavaHome
-    }
-
-    # Android SDK
-    $androidResult = Install-WindowsAndroidSDK `
-        -ApiArg $cfgApi `
-        -BuildToolsArg $cfgBuildTools `
-        -NdkArg $cfgNdk `
-        -CmakeArg $cfgCmake `
-        -SdkRoot $resolvedAndroidHome `
-        -FallbackCmdlineUrl $cfg['CMDLINE_TOOLS_URL_WIN'] `
-        -DryRun $DryRun
-
-    # Gradle
-    $gradleResult = Install-WindowsGradle `
-        -TargetVersion $cfgGradle `
-        -InstallDir $resolvedGradleDir `
-        -DryRun $DryRun
-
-    if ($gradleResult -and $gradleResult.GradleHome) {
-        $resolvedGradleHome = $gradleResult.GradleHome
-    }
-
-    # Flutter
-    $flutterResult = Install-WindowsFlutter `
-        -Channel $cfgFlutter `
-        -FlutterRoot $resolvedFlutterHome `
-        -AndroidSdk $resolvedAndroidHome `
-        -DryRun $DryRun
-
-    if ($flutterResult -and $flutterResult.FlutterHome) {
-        $resolvedFlutterHome = $flutterResult.FlutterHome
-    }
-}
+Invoke-WindowsParallelIngestion `
+    -JdkVer $cfgJdk `
+    -ApiVer $cfgApi `
+    -BuildToolsVer $cfgBuildTools `
+    -NdkVer $cfgNdk `
+    -CmakeVer $cfgCmake `
+    -GradleVer $cfgGradle `
+    -FlutterChannel $cfgFlutter `
+    -JdkInstallDir $resolvedJdkDir `
+    -SdkRoot $resolvedAndroidHome `
+    -GradleInstallDir $resolvedGradleDir `
+    -FlutterHome $resolvedFlutterHome `
+    -Architecture $osInfo.Architecture `
+    -FallbackCmdlineUrl $cfg['CMDLINE_TOOLS_URL_WIN'] `
+    -DryRun $DryRun
 
 # ------------------------------------------------------------------------------
 # Step 5: Environment and PATH Configuration
