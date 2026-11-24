@@ -2,7 +2,7 @@
   <img src="assets/logo.svg" width="128" height="128" alt="Flutter-Kick Logo" />
 </p>
 
-<h1 align="center">Flutter-Kick</h1>
+<h1 align="center">Flutter-Kick — Install Flutter & Android SDK Without Android Studio</h1>
 
 <p align="center">
   <a href="https://github.com/frozenlabx/flutter-kick/actions/workflows/ci.yml"><img src="https://github.com/frozenlabx/flutter-kick/actions/workflows/ci.yml/badge.svg" alt="CI" /></a>
@@ -12,7 +12,11 @@
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-yellow.svg" alt="License: MIT" /></a>
 </p>
 
-A lightweight, automated bootstrapper that configures a complete **headless Android SDK and Flutter toolchain** without Android Studio (~4+ GB disk saved).
+Flutter-Kick is an open-source Flutter and Android SDK installer that automatically sets up a complete, headless Flutter development environment without Android Studio.
+
+Install Flutter SDK, Android SDK command-line tools, Java JDK, Gradle, Android NDK, and CMake on Windows, macOS, or Linux using a single installation command.
+
+Built for Flutter developers, CI/CD pipelines, and lightweight Android development environments, Flutter-Kick simplifies installation, environment configuration, verification, and uninstallation.
 
 ---
 
@@ -103,6 +107,34 @@ Automate CI/CD pipelines or bypass prompts with command-line flags:
 ```
 
 ---
+
+## Frequently Asked Questions
+
+### Can I install Flutter without Android Studio?
+
+Yes. Flutter-Kick sets up Flutter and the Android
+command-line development tools without installing
+the Android Studio IDE.
+
+### Does Flutter-Kick support Windows, macOS, and Linux?
+
+Yes. Flutter-Kick provides Bash and PowerShell
+installers for its supported operating systems.
+
+### Can I install multiple Android SDK versions?
+
+Yes. Use the `--api` option to specify multiple
+Android API levels.
+
+### Can Flutter-Kick be used in CI/CD pipelines?
+
+Flutter-Kick supports non-interactive installation,
+making it suitable for automated environments.
+
+### How do I uninstall Flutter-Kick?
+
+Use the installer's uninstall command to remove
+managed components and revert its environment settings.
 
 ## 🖥️ Supported Platforms
 
