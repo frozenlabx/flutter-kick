@@ -214,7 +214,7 @@ function Invoke-WindowsParallelIngestion {
             $flutterBat = Join-Path $FlutterHome "bin\flutter.bat"
             if (Test-Path $flutterBat) {
                 & $flutterBat config --android-sdk $SdkRoot 2>$null
-                for ($i=0; $i -lt 30; $i++) { "y" } | & $flutterBat doctor --android-licenses 2>$null
+                1..30 | ForEach-Object { "y" } | & $flutterBat doctor --android-licenses 2>$null
             }
             Write-LogSuccess "Existing Flutter SDK linked."
         } else {

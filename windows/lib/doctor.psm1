@@ -447,14 +447,14 @@ function Invoke-Doctor {
 
             if ($tools.Android.Valid -and -not $tools.Android.LicensesAccepted -and $tools.Android.CmdlinePath) {
                 Write-LogInfo "Accepting Android SDK licenses..."
-                for ($i=0; $i -lt 30; $i++) { "y" } | & $tools.Android.CmdlinePath --licenses --sdk_root=$tools.Android.SdkRoot 2>$null
+                1..30 | ForEach-Object { "y" } | & $tools.Android.CmdlinePath --licenses --sdk_root=$tools.Android.SdkRoot 2>$null
                 Write-LogSuccess "Android SDK licenses accepted."
             }
 
             if ($tools.Flutter.Valid -and $tools.Android.Valid) {
                 Write-LogInfo "Linking Android SDK to Flutter..."
                 & (Join-Path $tools.Flutter.Path "bin\flutter.bat") config --android-sdk $tools.Android.SdkRoot 2>$null
-                for ($i=0; $i -lt 30; $i++) { "y" } | & (Join-Path $tools.Flutter.Path "bin\flutter.bat") doctor --android-licenses 2>$null
+                1..30 | ForEach-Object { "y" } | & (Join-Path $tools.Flutter.Path "bin\flutter.bat") doctor --android-licenses 2>$null
                 Write-LogSuccess "Flutter Android SDK linked."
             }
 
