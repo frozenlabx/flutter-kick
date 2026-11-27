@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# shellcheck disable=SC2034
 # ==============================================================================
 # mobile-toolchain-setup: Diagnostic Doctor & Tool Detection Library
 # Inspects existing installations of JDK, Android SDK, Gradle, and Flutter.
@@ -133,7 +134,7 @@ detect_existing_jdk() {
             local test_bin="${home_cand}/bin/java"
             if [[ -x "$test_bin" ]]; then
                 local test_out
-                if test_out="$("$test_bin" -version 2>&1)" && [[ $? -eq 0 ]]; then
+                if test_out="$("$test_bin" -version 2>&1)"; then
                     DETECTED_JDK_VALID=1
                     DETECTED_JDK_PATH="$home_cand"
                     DETECTED_JDK_VER="$(echo "$test_out" | head -n1)"
@@ -154,7 +155,7 @@ detect_existing_jdk() {
         local bin_cand
         for bin_cand in "${candidate_bins[@]}"; do
             local test_out
-            if test_out="$("$bin_cand" -version 2>&1)" && [[ $? -eq 0 ]]; then
+            if test_out="$("$bin_cand" -version 2>&1)"; then
                 DETECTED_JDK_VALID=1
                 DETECTED_JDK_PATH="$(dirname "$(dirname "$bin_cand")")"
                 DETECTED_JDK_VER="$(echo "$test_out" | head -n1)"
@@ -314,7 +315,7 @@ detect_existing_gradle() {
         local bin
         for bin in "${candidate_bins[@]}"; do
             local g_out
-            if g_out="$("$bin" -v 2>&1)" && [[ $? -eq 0 ]]; then
+            if g_out="$("$bin" -v 2>&1)"; then
                 DETECTED_GRADLE_VALID=1
                 DETECTED_GRADLE_PATH="$bin"
                 DETECTED_GRADLE_VER="$(echo "$g_out" | grep -E '^Gradle [0-9]' | head -n1 || echo "ready")"
@@ -492,7 +493,7 @@ run_doctor() {
         fi
 
         if [[ "$DETECTED_ADB_VALID" -eq 1 ]]; then
-            log_success "platform-tools: adb ready (${DETECTED_ADB_VER})"
+            log_success "platform-tools: adb ready (${DETECTED_ADB_VER}) [${DETECTED_ADB_PATH}]"
             count_passed=$((count_passed + 1))
         else
             log_warn "platform-tools: adb not found in ${DETECTED_ANDROID_HOME}/platform-tools"
@@ -519,6 +520,14 @@ run_doctor() {
             count_warn=$((count_warn + 1))
             issue_descriptions+=("No Android build-tools installed.")
             fix_recommendations+=("Install build-tools via: sdkmanager 'build-tools;36.0.0'")
+        fi
+
+        if [[ -n "$DETECTED_NDK_LIST" ]]; then
+            log_info "Installed NDK: ${DETECTED_NDK_LIST}"
+        fi
+
+        if [[ -n "$DETECTED_CMAKE_LIST" ]]; then
+            log_info "Installed CMake: ${DETECTED_CMAKE_LIST}"
         fi
 
         if [[ "$DETECTED_LICENSES_VALID" -eq 1 ]]; then
@@ -549,7 +558,9 @@ run_doctor() {
 
     detect_existing_flutter
     if [[ "$DETECTED_FLUTTER_VALID" -eq 1 ]]; then
-        log_success "Flutter SDK: ${DETECTED_FLUTTER_VER} (${DETECTED_FLUTTER_PATH})"
+        local channel_str=""
+        [[ -n "$DETECTED_FLUTTER_CHANNEL" ]] && channel_str=" [channel: ${DETECTED_FLUTTER_CHANNEL}]"
+        log_success "Flutter SDK: ${DETECTED_FLUTTER_VER}${channel_str} (${DETECTED_FLUTTER_PATH})"
         count_passed=$((count_passed + 1))
 
         # Check flutter android-sdk configuration
