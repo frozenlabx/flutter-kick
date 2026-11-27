@@ -1,4 +1,4 @@
-﻿# ==============================================================================
+# ==============================================================================
 # mobile-toolchain-setup: Windows Diagnostic Doctor & Tool Detection Library
 # Inspects existing installations of JDK, Android SDK, Gradle, and Flutter.
 # Provides comprehensive diagnostics, actionable troubleshooting & auto-fixing.
