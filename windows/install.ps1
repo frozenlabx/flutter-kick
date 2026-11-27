@@ -33,15 +33,15 @@ $configDir = Join-Path $projectRoot "config"
 $libDir = Join-Path $scriptDir "lib"
 
 # Import PowerShell Modules
-Import-Module (Join-Path $libDir "ui.psm1") -Force
-Import-Module (Join-Path $libDir "os_detect.psm1") -Force
-Import-Module (Join-Path $libDir "env.psm1") -Force
-Import-Module (Join-Path $libDir "jdk.psm1") -Force
-Import-Module (Join-Path $libDir "android.psm1") -Force
-Import-Module (Join-Path $libDir "gradle.psm1") -Force
-Import-Module (Join-Path $libDir "flutter.psm1") -Force
-Import-Module (Join-Path $libDir "parallel.psm1") -Force
-Import-Module (Join-Path $libDir "doctor.psm1") -Force
+Import-Module (Join-Path $libDir "ui.psm1") -Force -DisableNameChecking
+Import-Module (Join-Path $libDir "os_detect.psm1") -Force -DisableNameChecking
+Import-Module (Join-Path $libDir "env.psm1") -Force -DisableNameChecking
+Import-Module (Join-Path $libDir "jdk.psm1") -Force -DisableNameChecking
+Import-Module (Join-Path $libDir "android.psm1") -Force -DisableNameChecking
+Import-Module (Join-Path $libDir "gradle.psm1") -Force -DisableNameChecking
+Import-Module (Join-Path $libDir "flutter.psm1") -Force -DisableNameChecking
+Import-Module (Join-Path $libDir "parallel.psm1") -Force -DisableNameChecking
+Import-Module (Join-Path $libDir "doctor.psm1") -Force -DisableNameChecking
 
 # Read single source of truth defaults
 $defaultsPath = Join-Path $configDir "defaults.env"

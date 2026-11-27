@@ -109,7 +109,7 @@ function Get-ExistingTools {
     if (Test-Path $defaultWinSdk) { $sdkCandidates += $defaultWinSdk }
 
     foreach ($sdk in $sdkCandidates) {
-        if (Test-Path (Join-Path $sdk "cmdline-tools") -or (Test-Path (Join-Path $sdk "platform-tools")) -or (Test-Path (Join-Path $sdk "platforms"))) {
+        if ((Test-Path (Join-Path $sdk "cmdline-tools")) -or (Test-Path (Join-Path $sdk "platform-tools")) -or (Test-Path (Join-Path $sdk "platforms"))) {
             $results.Android.Valid = $true
             $results.Android.SdkRoot = $sdk
 
