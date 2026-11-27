@@ -229,13 +229,33 @@ run_parallel_ingestion() {
     local macos_tools="$3"
     local is_dry_run="$4"
     local is_verbose="$5"
+    local reuse_jdk="${6:-false}"
+    local reuse_android="${7:-false}"
+    local reuse_gradle="${8:-false}"
+    local reuse_flutter="${9:-false}"
     [[ "$is_verbose" -eq 1 ]] && export VERBOSE=1
 
     if [[ "$is_dry_run" == "true" ]]; then
-        log_dry_run "Worker 1: Fetch Eclipse Temurin JDK ${cfg_jdk}"
-        log_dry_run "Worker 2: Fetch Android SDK cmdline-tools"
-        log_dry_run "Worker 3: Fetch Gradle ${cfg_gradle} distribution"
-        log_dry_run "Worker 4: Clone Flutter SDK (${cfg_flutter})"
+        if [[ "$reuse_jdk" == "true" ]]; then
+            log_dry_run "Worker 1: Reusing existing JDK (${cfg_jdk})"
+        else
+            log_dry_run "Worker 1: Fetch Eclipse Temurin JDK ${cfg_jdk}"
+        fi
+        if [[ "$reuse_android" == "true" ]]; then
+            log_dry_run "Worker 2: Reusing existing Android SDK (${android_home})"
+        else
+            log_dry_run "Worker 2: Fetch Android SDK cmdline-tools"
+        fi
+        if [[ "$reuse_gradle" == "true" ]]; then
+            log_dry_run "Worker 3: Reusing existing Gradle (${cfg_gradle})"
+        else
+            log_dry_run "Worker 3: Fetch Gradle ${cfg_gradle} distribution"
+        fi
+        if [[ "$reuse_flutter" == "true" ]]; then
+            log_dry_run "Worker 4: Reusing existing Flutter SDK (${cfg_flutter})"
+        else
+            log_dry_run "Worker 4: Clone Flutter SDK (${cfg_flutter})"
+        fi
         log_dry_run "Configuration Pipeline:"
         log_dry_run "  -> Extract JDK & export JAVA_HOME"
         log_dry_run "  -> Extract cmdline-tools into ${android_home}/cmdline-tools/latest"
@@ -243,10 +263,16 @@ run_parallel_ingestion() {
         log_dry_run "  -> Finalize Flutter Android SDK linkage and doctor licenses"
 
         # Maintain exported environment paths across dry-run
-        install_jdk "$cfg_jdk" "$jdk_install_dir" "true" "$is_verbose"
+        if [[ "$reuse_jdk" != "true" ]]; then
+            install_jdk "$cfg_jdk" "$jdk_install_dir" "true" "$is_verbose"
+        fi
         install_android_sdk "$cfg_api" "$cfg_bt" "$cfg_ndk" "$cfg_cmake" "$android_home" "true" "$is_verbose"
-        install_gradle "$cfg_gradle" "$gradle_install_dir" "true" "$is_verbose"
-        install_flutter "$cfg_flutter" "$flutter_home" "$android_home" "$macos_tools" "true" "$is_verbose"
+        if [[ "$reuse_gradle" != "true" ]]; then
+            install_gradle "$cfg_gradle" "$gradle_install_dir" "true" "$is_verbose"
+        fi
+        if [[ "$reuse_flutter" != "true" ]]; then
+            install_flutter "$cfg_flutter" "$flutter_home" "$android_home" "$macos_tools" "true" "$is_verbose"
+        fi
         return 0
     fi
 
@@ -261,28 +287,54 @@ run_parallel_ingestion() {
     local log_gradle="${parallel_scratch}/gradle.log"
     local log_flutter="${parallel_scratch}/flutter.log"
 
-    local cmdline_url
-    cmdline_url="$(resolve_cmdline_tools_url "${OS_TYPE:-linux}")"
+    local cmdline_url=""
+    if [[ "$reuse_android" != "true" ]]; then
+        cmdline_url="$(resolve_cmdline_tools_url "${OS_TYPE:-linux}")"
+    fi
 
     local start_time
     start_time="$(date +%s)"
 
-    # Spawn workers
-    fetch_jdk_asset "$cfg_jdk" "$jdk_tar" "$log_jdk" &
-    local pid_jdk=$!
+    local pid_jdk=0
+    local pid_cmd=0
+    local pid_gradle=0
+    local pid_flutter=0
 
-    fetch_cmdline_asset "$cmdline_url" "$cmdline_zip" "$log_cmd" &
-    local pid_cmd=$!
+    # Spawn workers only for components not already existing / reused
+    if [[ "$reuse_jdk" == "true" ]]; then
+        echo "Using existing JDK" > "$log_jdk"
+    else
+        fetch_jdk_asset "$cfg_jdk" "$jdk_tar" "$log_jdk" &
+        pid_jdk=$!
+    fi
 
-    fetch_gradle_asset "$cfg_gradle" "$gradle_zip" "$log_gradle" &
-    local pid_gradle=$!
+    if [[ "$reuse_android" == "true" ]]; then
+        echo "Using existing Android SDK" > "$log_cmd"
+    else
+        fetch_cmdline_asset "$cmdline_url" "$cmdline_zip" "$log_cmd" &
+        pid_cmd=$!
+    fi
 
-    fetch_flutter_asset "$cfg_flutter" "$flutter_home" "$log_flutter" &
-    local pid_flutter=$!
+    if [[ "$reuse_gradle" == "true" ]]; then
+        echo "Using existing Gradle" > "$log_gradle"
+    else
+        fetch_gradle_asset "$cfg_gradle" "$gradle_zip" "$log_gradle" &
+        pid_gradle=$!
+    fi
+
+    if [[ "$reuse_flutter" == "true" ]]; then
+        echo "Using existing Flutter SDK" > "$log_flutter"
+    else
+        fetch_flutter_asset "$cfg_flutter" "$flutter_home" "$log_flutter" &
+        pid_flutter=$!
+    fi
 
     # Helper to kill background processes on error or cancellation
     kill_workers() {
-        kill -9 "$pid_jdk" "$pid_cmd" "$pid_gradle" "$pid_flutter" 2>/dev/null || true
+        local p
+        for p in "$pid_jdk" "$pid_cmd" "$pid_gradle" "$pid_flutter"; do
+            [[ "$p" -gt 0 ]] && kill -9 "$p" 2>/dev/null || true
+        done
         wait 2>/dev/null || true
     }
     trap kill_workers INT TERM
@@ -309,11 +361,33 @@ run_parallel_ingestion() {
     local exit_codes=(-1 -1 -1 -1)
     local final_status=("" "" "" "")
 
+    # Pre-mark reused components as completed
+    if [[ "$reuse_jdk" == "true" ]]; then
+        exit_codes[0]=0
+        final_status[0]="${CLR_GREEN}[✓] Using existing (${cfg_jdk})${CLR_RESET}"
+    fi
+    if [[ "$reuse_android" == "true" ]]; then
+        exit_codes[1]=0
+        final_status[1]="${CLR_GREEN}[✓] Using existing (${android_home})${CLR_RESET}"
+    fi
+    if [[ "$reuse_gradle" == "true" ]]; then
+        exit_codes[2]=0
+        final_status[2]="${CLR_GREEN}[✓] Using existing (${cfg_gradle})${CLR_RESET}"
+    fi
+    if [[ "$reuse_flutter" == "true" ]]; then
+        exit_codes[3]=0
+        final_status[3]="${CLR_GREEN}[✓] Using existing (${cfg_flutter})${CLR_RESET}"
+    fi
+
     # In interactive TTY, print the initial 4 lines
     if [[ "$is_interactive" -eq 1 ]]; then
         local i
         for i in 0 1 2 3; do
-            printf "  [%d/4] %-26s : %s Connecting...\n" "$((i + 1))" "${task_names[i]}" "${CLR_CYAN}⠋${CLR_RESET}"
+            if [[ ${exit_codes[i]} -eq 0 ]]; then
+                printf "  [%d/4] %-26s : %s\n" "$((i + 1))" "${task_names[i]}" "${final_status[i]}"
+            else
+                printf "  [%d/4] %-26s : %s Connecting...\n" "$((i + 1))" "${task_names[i]}" "${CLR_CYAN}⠋${CLR_RESET}"
+            fi
         done
     fi
 
@@ -441,19 +515,41 @@ run_parallel_ingestion() {
     # --------------------------------------------------------------------------
     # Staged Toolchain Assembly & Configuration Pipeline
     # --------------------------------------------------------------------------
-    log_info "Configuring Eclipse Temurin OpenJDK ${cfg_jdk}..."
-    install_jdk "$cfg_jdk" "$jdk_install_dir" "false" "$is_verbose" "$jdk_tar"
+    if [[ "$reuse_jdk" == "true" ]]; then
+        log_success "Using existing JDK: ${JAVA_HOME}"
+        export PATH="${JAVA_HOME}/bin:${PATH}"
+    else
+        log_info "Configuring Eclipse Temurin OpenJDK ${cfg_jdk}..."
+        install_jdk "$cfg_jdk" "$jdk_install_dir" "false" "$is_verbose" "$jdk_tar"
+    fi
 
-    log_info "Configuring Android SDK Command-line Tools and Packages..."
-    install_android_sdk "$cfg_api" "$cfg_bt" "$cfg_ndk" "$cfg_cmake" "$android_home" "false" "$is_verbose" "$cmdline_zip"
+    if [[ "$reuse_android" == "true" ]]; then
+        log_info "Verifying packages on existing Android SDK at ${android_home}..."
+        install_android_sdk "$cfg_api" "$cfg_bt" "$cfg_ndk" "$cfg_cmake" "$android_home" "false" "$is_verbose" ""
+    else
+        log_info "Configuring Android SDK Command-line Tools and Packages..."
+        install_android_sdk "$cfg_api" "$cfg_bt" "$cfg_ndk" "$cfg_cmake" "$android_home" "false" "$is_verbose" "$cmdline_zip"
+    fi
 
-    if [[ "$cfg_gradle" != "skip" && -n "$cfg_gradle" ]]; then
+    if [[ "$reuse_gradle" == "true" ]]; then
+        log_success "Using existing Gradle"
+    elif [[ "$cfg_gradle" != "skip" && -n "$cfg_gradle" ]]; then
         log_info "Configuring Gradle ${cfg_gradle}..."
         install_gradle "$cfg_gradle" "$gradle_install_dir" "false" "$is_verbose" "$gradle_zip"
     fi
 
-    log_info "Configuring Flutter SDK (${cfg_flutter})..."
-    install_flutter "$cfg_flutter" "$flutter_home" "$android_home" "$macos_tools" "false" "$is_verbose"
+    if [[ "$reuse_flutter" == "true" ]]; then
+        log_info "Configuring existing Flutter SDK linkage at ${flutter_home}..."
+        export PATH="${flutter_home}/bin:${PATH}"
+        if [[ -x "${flutter_home}/bin/flutter" ]]; then
+            "${flutter_home}/bin/flutter" config --android-sdk "$android_home" >/dev/null 2>&1 || true
+            yes 2>/dev/null | "${flutter_home}/bin/flutter" doctor --android-licenses >/dev/null 2>&1 || true
+        fi
+        log_success "Existing Flutter SDK linked."
+    else
+        log_info "Configuring Flutter SDK (${cfg_flutter})..."
+        install_flutter "$cfg_flutter" "$flutter_home" "$android_home" "$macos_tools" "false" "$is_verbose"
+    fi
 
     local total_elapsed=$(( $(date +%s) - start_time ))
     log_success "All toolchain components configured in ${total_elapsed}s."

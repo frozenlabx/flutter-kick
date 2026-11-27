@@ -9,6 +9,10 @@
 [CmdletBinding()]
 param (
     [switch]$Default,
+    [switch]$Doctor,
+    [switch]$Fix,
+    [switch]$Reinstall,
+    [switch]$Fresh,
     [switch]$DryRun,
     [switch]$Uninstall,
     [switch]$Yes,

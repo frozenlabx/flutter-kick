@@ -70,6 +70,11 @@ if [[ -f "${LIB_DIR}/parallel.sh" ]]; then
     source "${LIB_DIR}/parallel.sh"
 fi
 
+if [[ -f "${LIB_DIR}/doctor.sh" ]]; then
+    # shellcheck source=/dev/null
+    source "${LIB_DIR}/doctor.sh"
+fi
+
 # ------------------------------------------------------------------------------
 # Help Documentation
 # ------------------------------------------------------------------------------
@@ -91,6 +96,11 @@ Options:
   -y, --yes                 Automatically answer 'yes' to confirmation prompts
   -v, --verbose             Enable detailed debug log output
   -h, --help                Show this help message and exit
+
+Troubleshooting & Diagnostics:
+  --doctor                  Inspect host system & mobile toolchain health (JDK, Android SDK, PATH)
+  --fix                     Automatically apply recommended fixes alongside doctor
+  --reinstall, --fresh      Force fresh downloads/reinstalls, ignoring existing detected tools
 
 Component Overrides:
   --jdk <version>           JDK version (17, 21) [Default: ${JDK_VERSION}]
@@ -119,6 +129,9 @@ DRY_RUN=false
 UNINSTALL=false
 AUTO_CONFIRM=false
 VERBOSE=0
+DOCTOR_MODE=false
+AUTO_FIX=false
+FORCE_REINSTALL=false
 
 CLI_JDK=""
 CLI_API=""
@@ -136,6 +149,18 @@ while [[ $# -gt 0 ]]; do
             shift
             ;;
         -p|--parallel)
+            shift
+            ;;
+        --doctor)
+            DOCTOR_MODE=true
+            shift
+            ;;
+        --fix)
+            AUTO_FIX=true
+            shift
+            ;;
+        --reinstall|--fresh)
+            FORCE_REINSTALL=true
             shift
             ;;
         -n|--dry-run)
@@ -204,6 +229,11 @@ done
 init_logging "$DEFAULT_LOG_FILE"
 show_banner
 
+if [[ "$DOCTOR_MODE" == "true" ]]; then
+    run_doctor "$AUTO_FIX"
+    exit $?
+fi
+
 # ------------------------------------------------------------------------------
 # System Detection
 # ------------------------------------------------------------------------------
@@ -232,7 +262,8 @@ if [[ "$UNINSTALL" == "true" ]]; then
 fi
 
 # ------------------------------------------------------------------------------
-# Pre-Flight Disk Space Verification
+# ------------------------------------------------------------------------------
+# Pre-Flight Disk Space Verification & Tool Detection
 # ------------------------------------------------------------------------------
 log_step "2" "7" "Pre-Flight Checks"
 if ! check_disk_space "$HOME" "${MIN_DISK_SPACE_GB:-15}"; then
@@ -241,6 +272,28 @@ if ! check_disk_space "$HOME" "${MIN_DISK_SPACE_GB:-15}"; then
             log_error "Installation aborted due to low disk space."
             exit 1
         fi
+    fi
+fi
+
+detect_existing_tools
+
+REUSE_JDK=false
+REUSE_ANDROID=false
+REUSE_GRADLE=false
+REUSE_FLUTTER=false
+
+if [[ "$FORCE_REINSTALL" == "false" ]]; then
+    if [[ "$DETECTED_JDK_VALID" -eq 1 ]]; then
+        log_info "Detected existing JDK: ${DETECTED_JDK_VER} (${DETECTED_JDK_PATH})"
+    fi
+    if [[ "$DETECTED_ANDROID_VALID" -eq 1 ]]; then
+        log_info "Detected existing Android SDK: ${DETECTED_ANDROID_HOME}"
+    fi
+    if [[ "$DETECTED_GRADLE_VALID" -eq 1 ]]; then
+        log_info "Detected existing Gradle: ${DETECTED_GRADLE_VER} (${DETECTED_GRADLE_PATH})"
+    fi
+    if [[ "$DETECTED_FLUTTER_VALID" -eq 1 ]]; then
+        log_info "Detected existing Flutter: ${DETECTED_FLUTTER_VER} (${DETECTED_FLUTTER_PATH})"
     fi
 fi
 
@@ -253,25 +306,92 @@ if [[ -n "$CLI_JDK" || -n "$CLI_API" || -n "$CLI_BUILD_TOOLS" || -n "$CLI_NDK" |
 fi
 
 if [[ "$has_cli_overrides" == "true" ]]; then
-    # Non-interactive CLI flag override mode: apply values directly without prompting
-    CFG_JDK="${CLI_JDK:-$JDK_VERSION}"
+    # Non-interactive CLI flag override mode
+    if [[ -n "$CLI_JDK" ]]; then
+        CFG_JDK="$CLI_JDK"
+        REUSE_JDK=false
+    elif [[ "$DETECTED_JDK_VALID" -eq 1 && "$FORCE_REINSTALL" == "false" ]]; then
+        REUSE_JDK=true
+        JAVA_HOME="$DETECTED_JDK_PATH"
+        CFG_JDK="existing (${DETECTED_JDK_VER})"
+    else
+        CFG_JDK="$JDK_VERSION"
+    fi
+
     CFG_API="${CLI_API:-$ANDROID_API}"
     CFG_BUILD_TOOLS="${CLI_BUILD_TOOLS:-$BUILD_TOOLS_VERSION}"
     CFG_NDK="${CLI_NDK:-$NDK_VERSION}"
     CFG_CMAKE="${CLI_CMAKE:-$CMAKE_VERSION}"
-    CFG_GRADLE="${CLI_GRADLE:-$GRADLE_VERSION}"
-    CFG_FLUTTER="${CLI_FLUTTER:-$FLUTTER_CHANNEL}"
+
+    if [[ "$DETECTED_ANDROID_VALID" -eq 1 && "$DETECTED_CMDLINE_VALID" -eq 1 && "$FORCE_REINSTALL" == "false" ]]; then
+        REUSE_ANDROID=true
+        ANDROID_HOME="$DETECTED_ANDROID_HOME"
+    fi
+
+    if [[ -n "$CLI_GRADLE" ]]; then
+        CFG_GRADLE="$CLI_GRADLE"
+        REUSE_GRADLE=false
+    elif [[ "$DETECTED_GRADLE_VALID" -eq 1 && "$FORCE_REINSTALL" == "false" ]]; then
+        REUSE_GRADLE=true
+        GRADLE_HOME="$(dirname "$(dirname "$DETECTED_GRADLE_PATH")")"
+        CFG_GRADLE="existing (${DETECTED_GRADLE_VER})"
+    else
+        CFG_GRADLE="$GRADLE_VERSION"
+    fi
+
+    if [[ -n "$CLI_FLUTTER" ]]; then
+        CFG_FLUTTER="$CLI_FLUTTER"
+        REUSE_FLUTTER=false
+    elif [[ "$DETECTED_FLUTTER_VALID" -eq 1 && "$FORCE_REINSTALL" == "false" ]]; then
+        REUSE_FLUTTER=true
+        FLUTTER_HOME="$DETECTED_FLUTTER_PATH"
+        CFG_FLUTTER="existing (${DETECTED_FLUTTER_VER})"
+    else
+        CFG_FLUTTER="$FLUTTER_CHANNEL"
+    fi
+
     CFG_MACOS_IOS_TOOLS="${CLI_MACOS_IOS_TOOLS:-$MACOS_IOS_TOOLS}"
 elif [[ "$MODE" == "1" ]]; then
-    # Recommended LTS default mode
+    # Recommended LTS default mode with smart installation reuse
     log_info "Applying Recommended LTS default configurations."
-    CFG_JDK="$JDK_VERSION"
+    if [[ "$DETECTED_JDK_VALID" -eq 1 && "$FORCE_REINSTALL" == "false" ]]; then
+        REUSE_JDK=true
+        JAVA_HOME="$DETECTED_JDK_PATH"
+        CFG_JDK="existing (${DETECTED_JDK_VER})"
+        log_success "Reusing existing JDK (${DETECTED_JDK_VER})."
+    else
+        CFG_JDK="$JDK_VERSION"
+    fi
+
+    if [[ "$DETECTED_ANDROID_VALID" -eq 1 && "$DETECTED_CMDLINE_VALID" -eq 1 && "$FORCE_REINSTALL" == "false" ]]; then
+        REUSE_ANDROID=true
+        ANDROID_HOME="$DETECTED_ANDROID_HOME"
+        log_success "Reusing existing Android SDK (${DETECTED_ANDROID_HOME})."
+    fi
+
     CFG_API="$ANDROID_API"
     CFG_BUILD_TOOLS="$BUILD_TOOLS_VERSION"
     CFG_NDK="$NDK_VERSION"
     CFG_CMAKE="$CMAKE_VERSION"
-    CFG_GRADLE="$GRADLE_VERSION"
-    CFG_FLUTTER="$FLUTTER_CHANNEL"
+
+    if [[ "$DETECTED_GRADLE_VALID" -eq 1 && "$FORCE_REINSTALL" == "false" ]]; then
+        REUSE_GRADLE=true
+        GRADLE_HOME="$(dirname "$(dirname "$DETECTED_GRADLE_PATH")")"
+        CFG_GRADLE="existing (${DETECTED_GRADLE_VER})"
+        log_success "Reusing existing Gradle (${DETECTED_GRADLE_VER})."
+    else
+        CFG_GRADLE="$GRADLE_VERSION"
+    fi
+
+    if [[ "$DETECTED_FLUTTER_VALID" -eq 1 && "$FORCE_REINSTALL" == "false" ]]; then
+        REUSE_FLUTTER=true
+        FLUTTER_HOME="$DETECTED_FLUTTER_PATH"
+        CFG_FLUTTER="existing (${DETECTED_FLUTTER_VER})"
+        log_success "Reusing existing Flutter SDK (${DETECTED_FLUTTER_VER})."
+    else
+        CFG_FLUTTER="$FLUTTER_CHANNEL"
+    fi
+
     CFG_MACOS_IOS_TOOLS="$MACOS_IOS_TOOLS"
 else
     # Interactive or piped mode selection
@@ -291,13 +411,44 @@ else
 
     if [[ "$MODE" == "1" ]]; then
         log_info "Applying Recommended LTS default configurations."
-        CFG_JDK="$JDK_VERSION"
+        if [[ "$DETECTED_JDK_VALID" -eq 1 && "$FORCE_REINSTALL" == "false" ]]; then
+            REUSE_JDK=true
+            JAVA_HOME="$DETECTED_JDK_PATH"
+            CFG_JDK="existing (${DETECTED_JDK_VER})"
+            log_success "Reusing existing JDK (${DETECTED_JDK_VER})."
+        else
+            CFG_JDK="$JDK_VERSION"
+        fi
+
+        if [[ "$DETECTED_ANDROID_VALID" -eq 1 && "$DETECTED_CMDLINE_VALID" -eq 1 && "$FORCE_REINSTALL" == "false" ]]; then
+            REUSE_ANDROID=true
+            ANDROID_HOME="$DETECTED_ANDROID_HOME"
+            log_success "Reusing existing Android SDK (${DETECTED_ANDROID_HOME})."
+        fi
+
         CFG_API="$ANDROID_API"
         CFG_BUILD_TOOLS="$BUILD_TOOLS_VERSION"
         CFG_NDK="$NDK_VERSION"
         CFG_CMAKE="$CMAKE_VERSION"
-        CFG_GRADLE="$GRADLE_VERSION"
-        CFG_FLUTTER="$FLUTTER_CHANNEL"
+
+        if [[ "$DETECTED_GRADLE_VALID" -eq 1 && "$FORCE_REINSTALL" == "false" ]]; then
+            REUSE_GRADLE=true
+            GRADLE_HOME="$(dirname "$(dirname "$DETECTED_GRADLE_PATH")")"
+            CFG_GRADLE="existing (${DETECTED_GRADLE_VER})"
+            log_success "Reusing existing Gradle (${DETECTED_GRADLE_VER})."
+        else
+            CFG_GRADLE="$GRADLE_VERSION"
+        fi
+
+        if [[ "$DETECTED_FLUTTER_VALID" -eq 1 && "$FORCE_REINSTALL" == "false" ]]; then
+            REUSE_FLUTTER=true
+            FLUTTER_HOME="$DETECTED_FLUTTER_PATH"
+            CFG_FLUTTER="existing (${DETECTED_FLUTTER_VER})"
+            log_success "Reusing existing Flutter SDK (${DETECTED_FLUTTER_VER})."
+        else
+            CFG_FLUTTER="$FLUTTER_CHANNEL"
+        fi
+
         CFG_MACOS_IOS_TOOLS="$MACOS_IOS_TOOLS"
     else
         # Interactive Custom Setup mode
@@ -307,11 +458,30 @@ else
 
         # 1. JDK
         printf "  %s• Java Development Kit (JDK):%s\n" "${CLR_BOLD}" "${CLR_RESET}"
-        printf "    %sOptions: 17 (LTS, Recommended for AGP 8 & Flutter), 21 (LTS)%s\n" "${CLR_DIM}" "${CLR_RESET}"
-        prompt_with_default "JDK Version (17/21)" "$JDK_VERSION" CFG_JDK
+        if [[ "$DETECTED_JDK_VALID" -eq 1 && "$FORCE_REINSTALL" == "false" ]]; then
+            printf "    %sDetected existing JDK: %s (%s)%s\n" "${CLR_CYAN}" "${DETECTED_JDK_VER}" "${DETECTED_JDK_PATH}" "${CLR_RESET}"
+            if prompt_confirm "Reuse existing JDK?" true; then
+                REUSE_JDK=true
+                JAVA_HOME="$DETECTED_JDK_PATH"
+                CFG_JDK="existing (${DETECTED_JDK_VER})"
+            else
+                printf "    %sOptions: 17 (LTS, Recommended for AGP 8 & Flutter), 21 (LTS)%s\n" "${CLR_DIM}" "${CLR_RESET}"
+                prompt_with_default "JDK Version (17/21)" "$JDK_VERSION" CFG_JDK
+            fi
+        else
+            printf "    %sOptions: 17 (LTS, Recommended for AGP 8 & Flutter), 21 (LTS)%s\n" "${CLR_DIM}" "${CLR_RESET}"
+            prompt_with_default "JDK Version (17/21)" "$JDK_VERSION" CFG_JDK
+        fi
 
-        # 2. Android API
+        # 2. Android API & SDK location
         printf "\n  %s• Android SDK Platform API:%s\n" "${CLR_BOLD}" "${CLR_RESET}"
+        if [[ "$DETECTED_ANDROID_VALID" -eq 1 && "$DETECTED_CMDLINE_VALID" -eq 1 && "$FORCE_REINSTALL" == "false" ]]; then
+            printf "    %sDetected existing Android SDK: %s%s\n" "${CLR_CYAN}" "${DETECTED_ANDROID_HOME}" "${CLR_RESET}"
+            if prompt_confirm "Reuse existing Android SDK location?" true; then
+                REUSE_ANDROID=true
+                ANDROID_HOME="$DETECTED_ANDROID_HOME"
+            fi
+        fi
         printf "    %sCommon: 36 (Android 16), 35 (Android 15), 34 (Android 14), 33 (Android 13)%s\n" "${CLR_DIM}" "${CLR_RESET}"
         printf "    %sTip: You can specify multiple APIs separated by commas (e.g. 34,35,36)%s\n" "${CLR_DIM}" "${CLR_RESET}"
         prompt_with_default "Android API Level" "$ANDROID_API" CFG_API
@@ -334,13 +504,37 @@ else
 
         # 6. Gradle
         printf "\n  %s• Gradle Build Tool:%s\n" "${CLR_BOLD}" "${CLR_RESET}"
-        printf "    %sCommon: 8.11.1 (Current Stable), 8.10.2, 8.9, 8.7, or 'skip'%s\n" "${CLR_DIM}" "${CLR_RESET}"
-        prompt_with_default "Gradle Version (version or 'skip')" "$GRADLE_VERSION" CFG_GRADLE
+        if [[ "$DETECTED_GRADLE_VALID" -eq 1 && "$FORCE_REINSTALL" == "false" ]]; then
+            printf "    %sDetected existing Gradle: %s%s\n" "${CLR_CYAN}" "${DETECTED_GRADLE_VER}" "${CLR_RESET}"
+            if prompt_confirm "Reuse existing Gradle?" true; then
+                REUSE_GRADLE=true
+                GRADLE_HOME="$(dirname "$(dirname "$DETECTED_GRADLE_PATH")")"
+                CFG_GRADLE="existing (${DETECTED_GRADLE_VER})"
+            else
+                printf "    %sCommon: 8.11.1 (Current Stable), 8.10.2, 8.9, 8.7, or 'skip'%s\n" "${CLR_DIM}" "${CLR_RESET}"
+                prompt_with_default "Gradle Version (version or 'skip')" "$GRADLE_VERSION" CFG_GRADLE
+            fi
+        else
+            printf "    %sCommon: 8.11.1 (Current Stable), 8.10.2, 8.9, 8.7, or 'skip'%s\n" "${CLR_DIM}" "${CLR_RESET}"
+            prompt_with_default "Gradle Version (version or 'skip')" "$GRADLE_VERSION" CFG_GRADLE
+        fi
 
         # 7. Flutter
         printf "\n  %s• Flutter SDK Channel / Version Management:%s\n" "${CLR_BOLD}" "${CLR_RESET}"
-        printf "    %sOptions: stable (Recommended), beta, master, git tag (e.g. 3.27.0), or 'fvm'%s\n" "${CLR_DIM}" "${CLR_RESET}"
-        prompt_with_default "Flutter Channel/Tag or 'fvm'" "$FLUTTER_CHANNEL" CFG_FLUTTER
+        if [[ "$DETECTED_FLUTTER_VALID" -eq 1 && "$FORCE_REINSTALL" == "false" ]]; then
+            printf "    %sDetected existing Flutter: %s (%s)%s\n" "${CLR_CYAN}" "${DETECTED_FLUTTER_VER}" "${DETECTED_FLUTTER_PATH}" "${CLR_RESET}"
+            if prompt_confirm "Reuse existing Flutter SDK?" true; then
+                REUSE_FLUTTER=true
+                FLUTTER_HOME="$DETECTED_FLUTTER_PATH"
+                CFG_FLUTTER="existing (${DETECTED_FLUTTER_VER})"
+            else
+                printf "    %sOptions: stable (Recommended), beta, master, git tag (e.g. 3.27.0), or 'fvm'%s\n" "${CLR_DIM}" "${CLR_RESET}"
+                prompt_with_default "Flutter Channel/Tag or 'fvm'" "$FLUTTER_CHANNEL" CFG_FLUTTER
+            fi
+        else
+            printf "    %sOptions: stable (Recommended), beta, master, git tag (e.g. 3.27.0), or 'fvm'%s\n" "${CLR_DIM}" "${CLR_RESET}"
+            prompt_with_default "Flutter Channel/Tag or 'fvm'" "$FLUTTER_CHANNEL" CFG_FLUTTER
+        fi
 
         # 8. macOS iOS Tools (macOS only)
         if [[ "$OS_TYPE" == "macos" ]]; then
@@ -354,19 +548,26 @@ else
 fi
 
 # Update default JAVA_HOME and GRADLE_HOME based on chosen versions
-JDK_INSTALL_DIR="${DEFAULT_JDK_INSTALL_DIR:-${HOME}/.local/share/jdks}"
-GRADLE_INSTALL_DIR="${DEFAULT_GRADLE_INSTALL_DIR:-${HOME}/.local/share/gradle}"
-
-if [[ "$OS_TYPE" == "macos" ]]; then
-    JAVA_HOME="${JDK_INSTALL_DIR}/temurin-${CFG_JDK}/Contents/Home"
+if [[ "$REUSE_JDK" != "true" ]]; then
+    JDK_INSTALL_DIR="${DEFAULT_JDK_INSTALL_DIR:-${HOME}/.local/share/jdks}"
+    if [[ "$OS_TYPE" == "macos" ]]; then
+        JAVA_HOME="${JDK_INSTALL_DIR}/temurin-${CFG_JDK}/Contents/Home"
+    else
+        JAVA_HOME="${JDK_INSTALL_DIR}/temurin-${CFG_JDK}"
+    fi
 else
-    JAVA_HOME="${JDK_INSTALL_DIR}/temurin-${CFG_JDK}"
+    JDK_INSTALL_DIR="$(dirname "$JAVA_HOME")"
 fi
 
-if [[ "$CFG_GRADLE" != "skip" ]]; then
-    GRADLE_HOME="${GRADLE_INSTALL_DIR}/gradle-${CFG_GRADLE}"
+if [[ "$REUSE_GRADLE" != "true" ]]; then
+    GRADLE_INSTALL_DIR="${DEFAULT_GRADLE_INSTALL_DIR:-${HOME}/.local/share/gradle}"
+    if [[ "$CFG_GRADLE" != "skip" ]]; then
+        GRADLE_HOME="${GRADLE_INSTALL_DIR}/gradle-${CFG_GRADLE}"
+    else
+        GRADLE_HOME="${DEFAULT_GRADLE_USER_HOME:-${HOME}/.gradle}"
+    fi
 else
-    GRADLE_HOME="${DEFAULT_GRADLE_USER_HOME:-${HOME}/.gradle}"
+    GRADLE_INSTALL_DIR="$(dirname "$GRADLE_HOME")"
 fi
 
 # ------------------------------------------------------------------------------
@@ -408,7 +609,8 @@ run_parallel_ingestion \
     "$CFG_JDK" "$CFG_API" "$CFG_BUILD_TOOLS" "$CFG_NDK" "$CFG_CMAKE" \
     "$CFG_GRADLE" "$CFG_FLUTTER" "$JDK_INSTALL_DIR" "$ANDROID_HOME" \
     "$GRADLE_INSTALL_DIR" "$FLUTTER_HOME" "$CFG_MACOS_IOS_TOOLS" \
-    "$DRY_RUN" "$VERBOSE"
+    "$DRY_RUN" "$VERBOSE" \
+    "$REUSE_JDK" "$REUSE_ANDROID" "$REUSE_GRADLE" "$REUSE_FLUTTER"
 
 if [[ "$CFG_GRADLE" != "skip" ]]; then
     GRADLE_HOME="${GRADLE_INSTALL_DIR}/gradle-${CFG_GRADLE}"

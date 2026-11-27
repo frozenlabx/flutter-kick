@@ -193,7 +193,7 @@ assert_contains "Root install.sh wrapper delegates properly" "$root_help_out" "U
 
 # --dry-run --default
 default_dry_out="$("${PROJECT_ROOT}/unix/install.sh" --dry-run --default)"
-assert_contains "Recommended mode sets JDK 17" "$default_dry_out" "JDK Version            : 17"
+assert_contains "Recommended mode sets JDK Version" "$default_dry_out" "JDK Version"
 assert_contains "Recommended mode sets Android API 36" "$default_dry_out" "API 36 (Build-Tools: 36.0.0)"
 assert_contains "Executes Step 1" "$default_dry_out" "[1/7] Detecting Host Operating System & Shell"
 assert_contains "Executes Step 2" "$default_dry_out" "[2/7] Pre-Flight Checks"
@@ -206,6 +206,12 @@ assert_contains "Verification checks gradle" "$default_dry_out" "Would execute '
 assert_contains "Verification checks adb" "$default_dry_out" "Would execute 'adb --version'"
 assert_contains "Verification checks flutter doctor" "$default_dry_out" "Would execute 'flutter doctor -v'"
 assert_contains "Executes Step 7" "$default_dry_out" "[7/7] Installation Completed"
+
+# --reinstall --dry-run --default forces fresh toolchain configuration
+reinstall_dry_out="$("${PROJECT_ROOT}/unix/install.sh" --reinstall --dry-run --default)"
+assert_contains "Reinstall mode sets clean JDK 17" "$reinstall_dry_out" "JDK Version            : 17"
+assert_contains "Reinstall logs Worker 1 Fetch JDK" "$reinstall_dry_out" "Worker 1: Fetch Eclipse Temurin JDK 17"
+assert_contains "Reinstall logs Worker 2 Fetch cmdline-tools" "$reinstall_dry_out" "Worker 2: Fetch Android SDK cmdline-tools"
 
 # --dry-run with component flag overrides
 custom_dry_out="$("${PROJECT_ROOT}/unix/install.sh" --dry-run --jdk 21 --api 35 --build-tools 35.0.0 --ndk 28.0 --cmake 3.22.1 --gradle 8.10 --flutter beta)"
@@ -220,21 +226,32 @@ uninstall_dry_out="$("${PROJECT_ROOT}/unix/install.sh" --uninstall --dry-run)"
 assert_contains "Uninstall mode identifies uninstallation" "$uninstall_dry_out" "Starting mobile-toolchain-setup Uninstallation"
 assert_contains "Uninstall dry-run finishes successfully" "$uninstall_dry_out" "Dry-run uninstall simulation complete"
 
-# Toolchain ingestion dry run checks
-toolchain_dry_out="$("${PROJECT_ROOT}/unix/install.sh" --dry-run --default)"
-assert_contains "Toolchain dry-run logs Worker 1" "$toolchain_dry_out" "Worker 1: Fetch Eclipse Temurin JDK"
-assert_contains "Toolchain dry-run logs Worker 2" "$toolchain_dry_out" "Worker 2: Fetch Android SDK cmdline-tools"
-assert_contains "Toolchain dry-run logs Worker 3" "$toolchain_dry_out" "Worker 3: Fetch Gradle"
-assert_contains "Toolchain dry-run logs Worker 4" "$toolchain_dry_out" "Worker 4: Clone Flutter SDK"
+# Toolchain ingestion dry run checks with --reinstall
+assert_contains "Toolchain dry-run logs Worker 3" "$reinstall_dry_out" "Worker 3: Fetch Gradle"
+assert_contains "Toolchain dry-run logs Worker 4" "$reinstall_dry_out" "Worker 4: Clone Flutter SDK"
 
 # ------------------------------------------------------------------------------
 # Test 10: Interactive Simulation via Piped Input
 # ------------------------------------------------------------------------------
 printf "\n[Test Group 10] Interactive simulation via piped inputs\n"
-piped_custom_out="$(printf "2\n21\n34\n34.0.0\nskip\nskip\n8.10\nbeta\nno\n" | "${PROJECT_ROOT}/unix/install.sh" --dry-run)"
+piped_custom_out="$(printf "2\n21\n34\n34.0.0\nskip\nskip\n8.10\nbeta\nno\n" | "${PROJECT_ROOT}/unix/install.sh" --reinstall --dry-run)"
 assert_contains "Piped custom mode prompts and sets JDK 21" "$piped_custom_out" "JDK Version            : 21"
 assert_contains "Piped custom mode prompts and sets API 34" "$piped_custom_out" "API 34 (Build-Tools: 34.0.0)"
 assert_contains "Piped custom mode prompts and sets Flutter beta" "$piped_custom_out" "Flutter Channel/SDK    : beta"
+
+# ------------------------------------------------------------------------------
+# Test 11: Diagnostic Doctor & Tool Detection
+# ------------------------------------------------------------------------------
+printf "\n[Test Group 11] Diagnostic Doctor (--doctor) & Existing Tool Detection\n"
+detection_out="$(bash -c "source '${PROJECT_ROOT}/unix/lib/doctor.sh' && detect_existing_tools && echo \"JDK=\$DETECTED_JDK_VALID;SDK=\$DETECTED_ANDROID_VALID\"")"
+assert_contains "detect_existing_tools executes without errors" "$detection_out" "JDK="
+
+doctor_cli_out="$(printf "n\n" | "${PROJECT_ROOT}/unix/install.sh" --doctor 2>&1 || true)"
+assert_contains "install.sh --doctor runs diagnostics" "$doctor_cli_out" "Flutter-Kick Toolchain Doctor & Diagnostic Analyzer"
+assert_contains "install.sh --doctor displays diagnostic summary" "$doctor_cli_out" "Doctor Summary:"
+
+root_doctor_out="$(printf "n\n" | "${PROJECT_ROOT}/install.sh" --doctor 2>&1 || true)"
+assert_contains "Root install.sh forwards --doctor" "$root_doctor_out" "Flutter-Kick Toolchain Doctor & Diagnostic Analyzer"
 
 # ------------------------------------------------------------------------------
 # Summary

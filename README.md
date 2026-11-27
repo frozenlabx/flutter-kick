@@ -47,12 +47,38 @@ irm https://raw.githubusercontent.com/frozenlabx/flutter-kick/main/install.ps1 |
 ## ✨ Features
 
 - **Headless & Fast**: Downloads only command-line tools, platforms, build-tools, NDK, CMake, Gradle, and Flutter. Zero Android Studio GUI overhead.
+- **Smart Tool Detection & Reuse**: Intelligently identifies existing JDK (17/21), Android SDK/cmdline-tools, Gradle, and Flutter installations—reusing them seamlessly without redundant downloads.
+- **Diagnostic Doctor & Auto-Fix**: Comprehensive diagnostic analyzer (`--doctor` / `-Doctor`) that inspects your entire mobile toolchain and provides actionable recommendations and automated fixes (`--fix` / `-Fix`).
 - **Concurrent Ingestion & Live Progress**: Downloads JDK, Android cmdline-tools, Gradle, and Flutter simultaneously with real-time percentage indicators.
 - **Smart NDK Resolution**: Supports partial versions (e.g. `28.0`, `27.2`), auto-mapping to the full LTS revision (e.g. `28.0.13004108`).
 - **Multi-API Support**: Install multiple Android SDK platforms at once (e.g. `--api 34,35,36`).
 - **Idempotent Shell Configuration**: Safely manages `JAVA_HOME`, `ANDROID_HOME`, `GRADLE_HOME`, and `PATH` via clean, reversible marker blocks (`.zshrc`, `.bashrc`, `config.fish`, or Windows User Environment).
 - **Automated Verification**: Automatically validates `java`, `gradle`, `adb`, and verifies Flutter licenses via `flutter doctor`.
 - **Clean Uninstallation**: Reverts environment variable blocks and cleanly removes installed SDK directories.
+
+---
+
+## 🩺 Diagnostic Doctor & Troubleshooting
+
+Analyze your mobile development setup and verify toolchain health at any time:
+
+### Unix (macOS / Linux)
+```bash
+# Analyze toolchain health (JDK, Android SDK, build-tools, licenses, PATH)
+./install.sh --doctor
+
+# Automatically repair detected issues (licenses, Flutter SDK link, environment)
+./install.sh --doctor --fix
+```
+
+### Windows (PowerShell)
+```powershell
+# Analyze toolchain health
+.\install.ps1 -Doctor
+
+# Automatically repair detected issues
+.\install.ps1 -Doctor -Fix
+```
 
 ---
 
@@ -78,11 +104,17 @@ Automate CI/CD pipelines or bypass prompts with command-line flags:
 
 ### Unix (macOS / Linux)
 ```bash
-# Non-interactive default setup
+# Non-interactive default setup (reuses existing valid tools)
 ./install.sh --default
+
+# Force fresh downloads even if tools exist
+./install.sh --default --reinstall
 
 # Custom toolchain configuration
 ./install.sh --jdk 21 --api "34,35" --ndk 28.0 --gradle 8.11.1 --flutter beta --yes
+
+# Diagnose environment & toolchain health
+./install.sh --doctor
 
 # Dry-run simulation (preview actions without writing to disk)
 ./install.sh --dry-run --default
@@ -93,11 +125,17 @@ Automate CI/CD pipelines or bypass prompts with command-line flags:
 
 ### Windows (PowerShell)
 ```powershell
-# Non-interactive default setup
+# Non-interactive default setup (reuses existing valid tools)
 .\install.ps1 -Default
+
+# Force fresh downloads even if tools exist
+.\install.ps1 -Default -Reinstall
 
 # Custom toolchain configuration
 .\install.ps1 -Jdk 21 -Api "34,35" -Ndk "28.0" -Gradle "8.11.1" -Flutter "beta" -Yes
+
+# Diagnose environment & toolchain health
+.\install.ps1 -Doctor
 
 # Dry-run simulation
 .\install.ps1 -DryRun -Default
@@ -156,7 +194,7 @@ Run the automated test suite locally:
 ./tests/test_suite.sh
 ```
 
-Validates configuration defaults, OS detection, idempotent environment injections, smart NDK mapping, interactive menus, and post-installation verification across 75 test cases.
+Validates configuration defaults, OS detection, idempotent environment injections, smart NDK mapping, interactive menus, and post-installation verification across 80 test cases.
 
 ---
 

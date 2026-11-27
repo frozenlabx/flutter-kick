@@ -1,4 +1,4 @@
-# ==============================================================================
+﻿# ==============================================================================
 # mobile-toolchain-setup: Windows PowerShell Entrypoint
 # Automates headless Android SDK & Flutter development environment setup
 # ==============================================================================
@@ -6,6 +6,10 @@
 param (
     [switch]$Default,
     [switch]$Parallel,
+    [switch]$Doctor,
+    [switch]$Fix,
+    [switch]$Reinstall,
+    [switch]$Fresh,
     [switch]$DryRun,
     [switch]$Uninstall,
     [switch]$Yes,
@@ -37,6 +41,7 @@ Import-Module (Join-Path $libDir "android.psm1") -Force
 Import-Module (Join-Path $libDir "gradle.psm1") -Force
 Import-Module (Join-Path $libDir "flutter.psm1") -Force
 Import-Module (Join-Path $libDir "parallel.psm1") -Force
+Import-Module (Join-Path $libDir "doctor.psm1") -Force
 
 # Read single source of truth defaults
 $defaultsPath = Join-Path $configDir "defaults.env"
@@ -51,6 +56,11 @@ if ($PSBoundParameters['Verbose']) {
 # ------------------------------------------------------------------------------
 Init-Logging
 Show-Banner
+
+if ($Doctor) {
+    Invoke-Doctor -Fix $Fix
+    exit 0
+}
 
 # ------------------------------------------------------------------------------
 # Step 1: Detect Operating System & Architecture
@@ -77,7 +87,7 @@ if ($Uninstall) {
 }
 
 # ------------------------------------------------------------------------------
-# Step 2: Pre-Flight Disk Space & Prerequisites Check
+# Step 2: Pre-Flight Disk Space & Tool Detection
 # ------------------------------------------------------------------------------
 Write-LogStep "2" "7" "Pre-Flight Checks"
 $diskSpaceSufficient = Test-DiskSpace -TargetPath $env:USERPROFILE -MinGB ([int]$cfg['MIN_DISK_SPACE_GB'])
@@ -85,6 +95,29 @@ if (-not $diskSpaceSufficient -and -not $DryRun -and -not $Yes -and [Environment
     if (-not (Prompt-Confirm "Free disk space is lower than recommended. Continue anyway?" $false)) {
         Write-LogError "Installation cancelled due to low disk space."
         exit 1
+    }
+}
+
+$existing = Get-ExistingTools
+$forceReinstall = ($Reinstall -or $Fresh)
+
+$reuseJdk = $false
+$reuseAndroid = $false
+$reuseGradle = $false
+$reuseFlutter = $false
+
+if (-not $forceReinstall) {
+    if ($existing.Jdk.Valid) {
+        Write-LogInfo "Detected existing JDK: $($existing.Jdk.Version) ($($existing.Jdk.Path))"
+    }
+    if ($existing.Android.Valid) {
+        Write-LogInfo "Detected existing Android SDK: $($existing.Android.SdkRoot)"
+    }
+    if ($existing.Gradle.Valid) {
+        Write-LogInfo "Detected existing Gradle: $($existing.Gradle.Version)"
+    }
+    if ($existing.Flutter.Valid) {
+        Write-LogInfo "Detected existing Flutter: $($existing.Flutter.Version) ($($existing.Flutter.Path))"
     }
 }
 
@@ -97,24 +130,89 @@ $mode = ""
 if ($hasCliOverrides) {
     # Non-interactive CLI flags mode
     $mode = "2"
-    $cfgJdk = if ($Jdk) { $Jdk } else { $cfg['JDK_VERSION'] }
+    if ($Jdk) {
+        $cfgJdk = $Jdk
+        $reuseJdk = $false
+    } elseif ($existing.Jdk.Valid -and -not $forceReinstall) {
+        $reuseJdk = $true
+        $resolvedJavaHome = $existing.Jdk.Path
+        $cfgJdk = "existing ($($existing.Jdk.Version))"
+    } else {
+        $cfgJdk = $cfg['JDK_VERSION']
+    }
+
     $cfgApi = if ($Api) { $Api } else { $cfg['ANDROID_API'] }
     $cfgBuildTools = if ($BuildTools) { $BuildTools } else { $cfg['BUILD_TOOLS_VERSION'] }
     $cfgNdk = if ($Ndk) { $Ndk } else { $cfg['NDK_VERSION'] }
     $cfgCmake = if ($Cmake) { $Cmake } else { $cfg['CMAKE_VERSION'] }
-    $cfgGradle = if ($Gradle) { $Gradle } else { $cfg['GRADLE_VERSION'] }
-    $cfgFlutter = if ($Flutter) { $Flutter } else { $cfg['FLUTTER_CHANNEL'] }
+
+    if ($existing.Android.Valid -and $existing.Android.HasCmdline -and -not $forceReinstall) {
+        $reuseAndroid = $true
+        $resolvedAndroidHome = $existing.Android.SdkRoot
+    }
+
+    if ($Gradle) {
+        $cfgGradle = $Gradle
+        $reuseGradle = $false
+    } elseif ($existing.Gradle.Valid -and -not $forceReinstall) {
+        $reuseGradle = $true
+        $resolvedGradleHome = Split-Path (Split-Path $existing.Gradle.Path -Parent) -Parent
+        $cfgGradle = "existing ($($existing.Gradle.Version))"
+    } else {
+        $cfgGradle = $cfg['GRADLE_VERSION']
+    }
+
+    if ($Flutter) {
+        $cfgFlutter = $Flutter
+        $reuseFlutter = $false
+    } elseif ($existing.Flutter.Valid -and -not $forceReinstall) {
+        $reuseFlutter = $true
+        $resolvedFlutterHome = $existing.Flutter.Path
+        $cfgFlutter = "existing ($($existing.Flutter.Version))"
+    } else {
+        $cfgFlutter = $cfg['FLUTTER_CHANNEL']
+    }
 }
 elseif ($Default) {
     $mode = "1"
     Write-LogInfo "Applying Recommended LTS default configurations."
-    $cfgJdk = $cfg['JDK_VERSION']
+    if ($existing.Jdk.Valid -and -not $forceReinstall) {
+        $reuseJdk = $true
+        $resolvedJavaHome = $existing.Jdk.Path
+        $cfgJdk = "existing ($($existing.Jdk.Version))"
+        Write-LogSuccess "Reusing existing JDK ($($existing.Jdk.Version))."
+    } else {
+        $cfgJdk = $cfg['JDK_VERSION']
+    }
+
+    if ($existing.Android.Valid -and $existing.Android.HasCmdline -and -not $forceReinstall) {
+        $reuseAndroid = $true
+        $resolvedAndroidHome = $existing.Android.SdkRoot
+        Write-LogSuccess "Reusing existing Android SDK ($($existing.Android.SdkRoot))."
+    }
+
     $cfgApi = $cfg['ANDROID_API']
     $cfgBuildTools = $cfg['BUILD_TOOLS_VERSION']
     $cfgNdk = $cfg['NDK_VERSION']
     $cfgCmake = $cfg['CMAKE_VERSION']
-    $cfgGradle = $cfg['GRADLE_VERSION']
-    $cfgFlutter = $cfg['FLUTTER_CHANNEL']
+
+    if ($existing.Gradle.Valid -and -not $forceReinstall) {
+        $reuseGradle = $true
+        $resolvedGradleHome = Split-Path (Split-Path $existing.Gradle.Path -Parent) -Parent
+        $cfgGradle = "existing ($($existing.Gradle.Version))"
+        Write-LogSuccess "Reusing existing Gradle ($($existing.Gradle.Version))."
+    } else {
+        $cfgGradle = $cfg['GRADLE_VERSION']
+    }
+
+    if ($existing.Flutter.Valid -and -not $forceReinstall) {
+        $reuseFlutter = $true
+        $resolvedFlutterHome = $existing.Flutter.Path
+        $cfgFlutter = "existing ($($existing.Flutter.Version))"
+        Write-LogSuccess "Reusing existing Flutter SDK ($($existing.Flutter.Version))."
+    } else {
+        $cfgFlutter = $cfg['FLUTTER_CHANNEL']
+    }
 }
 else {
     if ([Environment]::UserInteractive) {
@@ -127,13 +225,43 @@ else {
 
     if ($mode -eq "1") {
         Write-LogInfo "Applying Recommended LTS default configurations."
-        $cfgJdk = $cfg['JDK_VERSION']
+        if ($existing.Jdk.Valid -and -not $forceReinstall) {
+            $reuseJdk = $true
+            $resolvedJavaHome = $existing.Jdk.Path
+            $cfgJdk = "existing ($($existing.Jdk.Version))"
+            Write-LogSuccess "Reusing existing JDK ($($existing.Jdk.Version))."
+        } else {
+            $cfgJdk = $cfg['JDK_VERSION']
+        }
+
+        if ($existing.Android.Valid -and $existing.Android.HasCmdline -and -not $forceReinstall) {
+            $reuseAndroid = $true
+            $resolvedAndroidHome = $existing.Android.SdkRoot
+            Write-LogSuccess "Reusing existing Android SDK ($($existing.Android.SdkRoot))."
+        }
+
         $cfgApi = $cfg['ANDROID_API']
         $cfgBuildTools = $cfg['BUILD_TOOLS_VERSION']
         $cfgNdk = $cfg['NDK_VERSION']
         $cfgCmake = $cfg['CMAKE_VERSION']
-        $cfgGradle = $cfg['GRADLE_VERSION']
-        $cfgFlutter = $cfg['FLUTTER_CHANNEL']
+
+        if ($existing.Gradle.Valid -and -not $forceReinstall) {
+            $reuseGradle = $true
+            $resolvedGradleHome = Split-Path (Split-Path $existing.Gradle.Path -Parent) -Parent
+            $cfgGradle = "existing ($($existing.Gradle.Version))"
+            Write-LogSuccess "Reusing existing Gradle ($($existing.Gradle.Version))."
+        } else {
+            $cfgGradle = $cfg['GRADLE_VERSION']
+        }
+
+        if ($existing.Flutter.Valid -and -not $forceReinstall) {
+            $reuseFlutter = $true
+            $resolvedFlutterHome = $existing.Flutter.Path
+            $cfgFlutter = "existing ($($existing.Flutter.Version))"
+            Write-LogSuccess "Reusing existing Flutter SDK ($($existing.Flutter.Version))."
+        } else {
+            $cfgFlutter = $cfg['FLUTTER_CHANNEL']
+        }
     }
     else {
         Write-Host "`n--- Custom Configuration ---" -ForegroundColor Cyan
@@ -142,11 +270,30 @@ else {
 
         # 1. JDK
         Write-Host "  • Java Development Kit (JDK):" -ForegroundColor White
-        Write-Host "    Options: 17 (LTS, Recommended for AGP 8 & Flutter), 21 (LTS)" -ForegroundColor DarkGray
-        $cfgJdk = Prompt-WithDefault "JDK Version (17/21)" $cfg['JDK_VERSION']
+        if ($existing.Jdk.Valid -and -not $forceReinstall) {
+            Write-Host "    Detected existing JDK: $($existing.Jdk.Version) ($($existing.Jdk.Path))" -ForegroundColor Cyan
+            if (Prompt-Confirm "Reuse existing JDK?" $true) {
+                $reuseJdk = $true
+                $resolvedJavaHome = $existing.Jdk.Path
+                $cfgJdk = "existing ($($existing.Jdk.Version))"
+            } else {
+                Write-Host "    Options: 17 (LTS, Recommended for AGP 8 & Flutter), 21 (LTS)" -ForegroundColor DarkGray
+                $cfgJdk = Prompt-WithDefault "JDK Version (17/21)" $cfg['JDK_VERSION']
+            }
+        } else {
+            Write-Host "    Options: 17 (LTS, Recommended for AGP 8 & Flutter), 21 (LTS)" -ForegroundColor DarkGray
+            $cfgJdk = Prompt-WithDefault "JDK Version (17/21)" $cfg['JDK_VERSION']
+        }
 
-        # 2. Android API
+        # 2. Android API & Location
         Write-Host "`n  • Android SDK Platform API:" -ForegroundColor White
+        if ($existing.Android.Valid -and $existing.Android.HasCmdline -and -not $forceReinstall) {
+            Write-Host "    Detected existing Android SDK at: $($existing.Android.SdkRoot)" -ForegroundColor Cyan
+            if (Prompt-Confirm "Reuse existing Android SDK location?" $true) {
+                $reuseAndroid = $true
+                $resolvedAndroidHome = $existing.Android.SdkRoot
+            }
+        }
         Write-Host "    Common: 36 (Android 16), 35 (Android 15), 34 (Android 14), 33 (Android 13)" -ForegroundColor DarkGray
         Write-Host "    Tip: You can specify multiple APIs separated by commas (e.g. 34,35,36)" -ForegroundColor DarkGray
         $cfgApi = Prompt-WithDefault "Android API Level" $cfg['ANDROID_API']
@@ -169,18 +316,47 @@ else {
 
         # 6. Gradle
         Write-Host "`n  • Gradle Build Tool:" -ForegroundColor White
-        Write-Host "    Common: 8.11.1 (Current Stable), 8.10.2, 8.9, 8.7, or 'skip'" -ForegroundColor DarkGray
-        $cfgGradle = Prompt-WithDefault "Gradle Version (version or 'skip')" $cfg['GRADLE_VERSION']
+        if ($existing.Gradle.Valid -and -not $forceReinstall) {
+            Write-Host "    Detected existing Gradle: $($existing.Gradle.Version)" -ForegroundColor Cyan
+            if (Prompt-Confirm "Reuse existing Gradle?" $true) {
+                $reuseGradle = $true
+                $resolvedGradleHome = Split-Path (Split-Path $existing.Gradle.Path -Parent) -Parent
+                $cfgGradle = "existing ($($existing.Gradle.Version))"
+            } else {
+                Write-Host "    Common: 8.11.1 (Current Stable), 8.10.2, 8.9, 8.7, or 'skip'" -ForegroundColor DarkGray
+                $cfgGradle = Prompt-WithDefault "Gradle Version (version or 'skip')" $cfg['GRADLE_VERSION']
+            }
+        } else {
+            Write-Host "    Common: 8.11.1 (Current Stable), 8.10.2, 8.9, 8.7, or 'skip'" -ForegroundColor DarkGray
+            $cfgGradle = Prompt-WithDefault "Gradle Version (version or 'skip')" $cfg['GRADLE_VERSION']
+        }
 
         # 7. Flutter
         Write-Host "`n  • Flutter SDK Channel / Version Management:" -ForegroundColor White
-        Write-Host "    Options: stable (Recommended), beta, master, git tag (e.g. 3.27.0), or 'fvm'" -ForegroundColor DarkGray
-        $cfgFlutter = Prompt-WithDefault "Flutter Channel/Tag or 'fvm'" $cfg['FLUTTER_CHANNEL']
+        if ($existing.Flutter.Valid -and -not $forceReinstall) {
+            Write-Host "    Detected existing Flutter: $($existing.Flutter.Version) ($($existing.Flutter.Path))" -ForegroundColor Cyan
+            if (Prompt-Confirm "Reuse existing Flutter SDK?" $true) {
+                $reuseFlutter = $true
+                $resolvedFlutterHome = $existing.Flutter.Path
+                $cfgFlutter = "existing ($($existing.Flutter.Version))"
+            } else {
+                Write-Host "    Options: stable (Recommended), beta, master, git tag (e.g. 3.27.0), or 'fvm'" -ForegroundColor DarkGray
+                $cfgFlutter = Prompt-WithDefault "Flutter Channel/Tag or 'fvm'" $cfg['FLUTTER_CHANNEL']
+            }
+        } else {
+            Write-Host "    Options: stable (Recommended), beta, master, git tag (e.g. 3.27.0), or 'fvm'" -ForegroundColor DarkGray
+            $cfgFlutter = Prompt-WithDefault "Flutter Channel/Tag or 'fvm'" $cfg['FLUTTER_CHANNEL']
+        }
     }
 }
 
-$resolvedJavaHome = Join-Path $resolvedJdkDir "temurin-$cfgJdk"
-$resolvedGradleHome = if ($cfgGradle -ne "skip") { Join-Path $resolvedGradleDir "gradle-$cfgGradle" } else { Join-Path $env:USERPROFILE ".gradle" }
+if (-not $reuseJdk) {
+    $resolvedJavaHome = Join-Path $resolvedJdkDir "temurin-$cfgJdk"
+}
+
+if (-not $reuseGradle) {
+    $resolvedGradleHome = if ($cfgGradle -ne "skip") { Join-Path $resolvedGradleDir "gradle-$cfgGradle" } else { Join-Path $env:USERPROFILE ".gradle" }
+}
 
 # ------------------------------------------------------------------------------
 # Summary and User Confirmation
@@ -232,7 +408,11 @@ Invoke-WindowsParallelIngestion `
     -FlutterHome $resolvedFlutterHome `
     -Architecture $osInfo.Architecture `
     -FallbackCmdlineUrl $cfg['CMDLINE_TOOLS_URL_WIN'] `
-    -DryRun $DryRun
+    -DryRun $DryRun `
+    -ReuseJdk $reuseJdk `
+    -ReuseAndroid $reuseAndroid `
+    -ReuseGradle $reuseGradle `
+    -ReuseFlutter $reuseFlutter
 
 # ------------------------------------------------------------------------------
 # Step 5: Environment and PATH Configuration
