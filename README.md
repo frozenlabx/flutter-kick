@@ -62,18 +62,28 @@ irm https://raw.githubusercontent.com/frozenlabx/flutter-kick/main/install.ps1 |
 
 Analyze your mobile development setup and verify toolchain health at any time:
 
-### Unix (macOS / Linux)
+### Without Cloning (One-Liner from Anywhere)
 ```bash
-# Analyze toolchain health (JDK, Android SDK, build-tools, licenses, PATH)
+# macOS & Linux
+curl -fsSL https://raw.githubusercontent.com/frozenlabx/flutter-kick/main/install.sh | bash -s -- --doctor
+
+# Windows (PowerShell)
+& ([scriptblock]::Create((irm https://raw.githubusercontent.com/frozenlabx/flutter-kick/main/install.ps1))) -Doctor
+```
+
+### From Local Cloned Repository
+```bash
+# macOS & Linux
+cd flutter-kick
 ./install.sh --doctor
 
-# Automatically repair detected issues (licenses, Flutter SDK link, environment)
+# Automatically repair detected issues (licenses, Flutter SDK, PATH)
 ./install.sh --doctor --fix
 ```
 
-### Windows (PowerShell)
 ```powershell
-# Analyze toolchain health
+# Windows (PowerShell)
+cd flutter-kick
 .\install.ps1 -Doctor
 
 # Automatically repair detected issues
