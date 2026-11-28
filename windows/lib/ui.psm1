@@ -1,4 +1,4 @@
-# ==============================================================================
+﻿# ==============================================================================
 # mobile-toolchain-setup: Windows PowerShell UI & Logging Module
 # Provides ANSI formatting, status badges, log rotation, and interactive menus
 # ==============================================================================
@@ -108,20 +108,73 @@ function Write-LogDryRun {
 function Show-Banner {
     $banner = @"
 ================================================================================
- __  __       _     _ _        _____           _      _           _     
-|  \/  |     | |   (_) |      |_   _|         | |    | |         (_)    
-| \  / | ___ | |__  _| | ___    | | ___   ___ | | ___| |__   __ _ _ _ __
-| |\/| |/ _ \| '_ \| | |/ _ \   | |/ _ \ / _ \| |/ __| '_ \ / _` | | '_ \
-| |  | | (_) | |_) | | |  __/   | | (_) | (_) | | (__| | | | (_| | | | | |
-|_|  |_|\___/|_.__/|_|_|\___|   \_/\___/ \___/|_|\___|_| |_|\__,_|_|_| |_|
+  _____ _       _   _              _  ___      _    
+ |  ___| |_   _| |_| |_ ___ _ __  | |/ (_) ___| | __
+ | |_  | | | | | __| __/ _ \ '__| | ' /| |/ __| |/ /
+ |  _| | | |_| | |_| ||  __/ |    | . \| | (__|   < 
+ |_|   |_|\__,_|\__|\__\___|_|    |_|\_\_|\___|_|\_\
 ================================================================================
 "@
     Write-Host $banner -ForegroundColor Cyan
-    Write-Host " * Headless Android SDK & Flutter Toolchain Automation (Windows)" -ForegroundColor DarkGray
+    Write-Host " * Headless Flutter & Android SDK Environment Manager (Windows)" -ForegroundColor DarkGray
     if ($global:LogFileWritable) {
         Write-Host " * Log: $global:LogFilePath" -ForegroundColor DarkGray
     }
     Write-Host "================================================================================`n" -ForegroundColor Cyan
+}
+
+function Show-ToolchainOverview {
+    param (
+        [string]$OSName,
+        [string]$Arch,
+        [hashtable]$Existing,
+        [hashtable]$Config
+    )
+    Write-Host "--------------------------------------------------------------------------------" -ForegroundColor DarkCyan
+    Write-Host " Target System: $OSName ($Arch)  |  Environment: Windows Registry" -ForegroundColor White
+    Write-Host "--------------------------------------------------------------------------------" -ForegroundColor DarkCyan
+    Write-Host " Existing Toolchain Status:" -ForegroundColor White
+
+    if ($Existing.Jdk.Valid) {
+        Write-Host "   [✓] Java JDK       : " -ForegroundColor Green -NoNewline
+        Write-Host "$($Existing.Jdk.Version) " -NoNewline
+        Write-Host "(Reusing)" -ForegroundColor DarkGray
+    } else {
+        Write-Host "   [○] Java JDK       : " -ForegroundColor Cyan -NoNewline
+        Write-Host "Not found " -NoNewline
+        Write-Host "(Will install Eclipse Temurin $($Config['JDK_VERSION']))" -ForegroundColor DarkGray
+    }
+
+    if ($Existing.Android.Valid) {
+        Write-Host "   [✓] Android SDK    : " -ForegroundColor Green -NoNewline
+        Write-Host "$($Existing.Android.SdkRoot) " -NoNewline
+        Write-Host "(Reusing)" -ForegroundColor DarkGray
+    } else {
+        Write-Host "   [○] Android SDK    : " -ForegroundColor Cyan -NoNewline
+        Write-Host "Not found " -NoNewline
+        Write-Host "(Will install cmdline-tools & API $($Config['ANDROID_API']))" -ForegroundColor DarkGray
+    }
+
+    if ($Existing.Gradle.Valid) {
+        Write-Host "   [✓] Gradle         : " -ForegroundColor Green -NoNewline
+        Write-Host "$($Existing.Gradle.Version) " -NoNewline
+        Write-Host "(Reusing)" -ForegroundColor DarkGray
+    } else {
+        Write-Host "   [○] Gradle         : " -ForegroundColor Cyan -NoNewline
+        Write-Host "Not installed " -NoNewline
+        Write-Host "(Projects with 'gradlew.bat' don't require this)" -ForegroundColor DarkGray
+    }
+
+    if ($Existing.Flutter.Valid) {
+        Write-Host "   [✓] Flutter SDK    : " -ForegroundColor Green -NoNewline
+        Write-Host "$($Existing.Flutter.Version) " -NoNewline
+        Write-Host "(Reusing)" -ForegroundColor DarkGray
+    } else {
+        Write-Host "   [○] Flutter SDK    : " -ForegroundColor Cyan -NoNewline
+        Write-Host "Not found " -NoNewline
+        Write-Host "(Will install $($Config['FLUTTER_CHANNEL']) channel)" -ForegroundColor DarkGray
+    }
+    Write-Host "--------------------------------------------------------------------------------`n" -ForegroundColor DarkCyan
 }
 
 function Read-PromptWithDefault {
@@ -164,10 +217,13 @@ function Read-PromptModeSelection {
     param (
         [hashtable]$Config
     )
-    Write-Host "Select Installation Mode:" -ForegroundColor White
-    Write-Host "  [1] Recommended (Default)  - Quick setup with verified LTS toolchain" -ForegroundColor Green
-    Write-Host "                                (JDK $($Config['JDK_VERSION']), Android API $($Config['ANDROID_API']), Build-Tools $($Config['BUILD_TOOLS_VERSION']), Flutter $($Config['FLUTTER_CHANNEL']))" -ForegroundColor DarkGray
-    Write-Host "  [2] Custom Setup           - Configure JDK, Android APIs, NDK, CMake, Gradle, Flutter`n" -ForegroundColor Cyan
+    Write-Host "What would you like to do?`n" -ForegroundColor White
+    Write-Host "  [1] Quick Setup (Recommended)  - Setup Flutter & Android toolchain automatically" -ForegroundColor Green
+    Write-Host "                                    (Reuses existing tools; installs only missing components)" -ForegroundColor DarkGray
+    Write-Host "  [2] Custom Setup               - Choose custom JDK, Android API, NDK, CMake, Flutter" -ForegroundColor Cyan
+    Write-Host "  [3] Run Doctor / Troubleshoot  - Analyze setup health, accept licenses & repair issues" -ForegroundColor Yellow
+    Write-Host "  [4] Clean Uninstall            - Revert environment changes and remove managed SDKs" -ForegroundColor Red
+    Write-Host "  [q] Exit`n" -ForegroundColor DarkGray
 
     Write-Host "  ? " -ForegroundColor Cyan -NoNewline
     Write-Host "Enter choice " -NoNewline
@@ -175,10 +231,21 @@ function Read-PromptModeSelection {
     Write-Host ": " -NoNewline
 
     $choice = Read-Host
-    if ([string]::IsNullOrWhiteSpace($choice) -or $choice.Trim() -ne "2") {
+    if ([string]::IsNullOrWhiteSpace($choice)) {
         return "1"
     }
-    return "2"
+    $c = $choice.Trim().ToLower()
+    if ($c -eq "2") {
+        return "2"
+    } elseif ($c -eq "3" -or $c -eq "doctor" -or $c -eq "d") {
+        return "doctor"
+    } elseif ($c -eq "4" -or $c -eq "uninstall" -or $c -eq "u") {
+        return "uninstall"
+    } elseif ($c -eq "q" -or $c -eq "quit" -or $c -eq "exit") {
+        Write-Host "`nExiting Flutter-Kick."
+        exit 0
+    }
+    return "1"
 }
 Set-Alias -Name Prompt-ModeSelection -Value Read-PromptModeSelection -Scope Global
 
@@ -248,6 +315,7 @@ Export-ModuleMember -Function `
     Write-LogDebug, `
     Write-LogDryRun, `
     Show-Banner, `
+    Show-ToolchainOverview, `
     Read-PromptWithDefault, `
     Prompt-WithDefault, `
     Read-PromptConfirm, `

@@ -395,18 +395,35 @@ elif [[ "$MODE" == "1" ]]; then
     CFG_MACOS_IOS_TOOLS="$MACOS_IOS_TOOLS"
 else
     # Interactive or piped mode selection
+    print_toolchain_overview "${OS_NAME:-$OS_TYPE}" "${CPU_ARCH:-unknown}" "${ACTIVE_SHELL:-zsh}"
     if [[ -t 0 ]]; then
         prompt_mode_selection MODE
     else
         # If input is piped into script, attempt to read choice; fallback to Recommended on EOF
         if read -r piped_choice 2>/dev/null; then
             piped_choice="${piped_choice:-1}"
-            [[ "$piped_choice" != "2" ]] && piped_choice="1"
-            MODE="$piped_choice"
+            case "$piped_choice" in
+                2) MODE="2" ;;
+                3|[dD]octor) MODE="doctor" ;;
+                4|[uU]ninstall) MODE="uninstall" ;;
+                [qQ]|[qQ]uit|[eE]xit)
+                    printf "\nExiting Flutter-Kick.\n"
+                    exit 0
+                    ;;
+                *) MODE="1" ;;
+            esac
         else
             log_info "Non-interactive environment detected. Using Recommended (Default) mode."
             MODE="1"
         fi
+    fi
+
+    if [[ "$MODE" == "doctor" ]]; then
+        run_doctor "$AUTO_FIX"
+        exit $?
+    elif [[ "$MODE" == "uninstall" ]]; then
+        uninstall_toolchain "$DRY_RUN" "$AUTO_CONFIRM" "$ANDROID_HOME" "$FLUTTER_HOME" "$GRADLE_HOME"
+        exit 0
     fi
 
     if [[ "$MODE" == "1" ]]; then

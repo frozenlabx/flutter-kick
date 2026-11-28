@@ -1,4 +1,4 @@
-# ==============================================================================
+﻿# ==============================================================================
 # mobile-toolchain-setup: Windows PowerShell Entrypoint
 # Automates headless Android SDK & Flutter development environment setup
 # ==============================================================================
@@ -216,11 +216,25 @@ elseif ($Default) {
 }
 else {
     if ([Environment]::UserInteractive) {
+        Show-ToolchainOverview -OSName $osInfo.OSName -Arch $osInfo.Arch -Existing $existing -Config $cfg
         $mode = Prompt-ModeSelection -Config $cfg
     }
     else {
         Write-LogInfo "Non-interactive environment detected. Using Recommended (Default) mode."
         $mode = "1"
+    }
+
+    if ($mode -eq "doctor") {
+        Invoke-Doctor -AutoFix $Fix
+        exit $LASTEXITCODE
+    }
+    if ($mode -eq "uninstall") {
+        Remove-ToolchainEnvironment `
+            -AndroidHome $resolvedAndroidHome `
+            -FlutterHome $resolvedFlutterHome `
+            -AutoConfirm $Yes `
+            -DryRun $DryRun
+        exit 0
     }
 
     if ($mode -eq "1") {

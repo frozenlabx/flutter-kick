@@ -162,19 +162,54 @@ log_dry_run() {
 show_banner() {
     cat << 'EOF'
 ================================================================================
- __  __       _     _ _        _____           _      _           _     
-|  \/  |     | |   (_) |      |_   _|         | |    | |         (_)    
-| \  / | ___ | |__  _| | ___    | | ___   ___ | | ___| |__   __ _ _ _ __
-| |\/| |/ _ \| '_ \| | |/ _ \   | |/ _ \ / _ \| |/ __| '_ \ / _` | | '_ \
-| |  | | (_) | |_) | | |  __/   | | (_) | (_) | | (__| | | | (_| | | | | |
-|_|  |_|\___/|_.__/|_|_|\___|   \_/\___/ \___/|_|\___|_| |_|\__,_|_|_| |_|
+  _____ _       _   _              _  ___      _    
+ |  ___| |_   _| |_| |_ ___ _ __  | |/ (_) ___| | __
+ | |_  | | | | | __| __/ _ \ '__| | ' /| |/ __| |/ /
+ |  _| | | |_| | |_| ||  __/ |    | . \| | (__|   < 
+ |_|   |_|\__,_|\__|\__\___|_|    |_|\_\_|\___|_|\_\
 ================================================================================
 EOF
-    printf " %s* Headless Android SDK & Flutter Toolchain Automation%s\n" "${CLR_DIM}" "${CLR_RESET}"
+    printf " %s* Headless Flutter & Android SDK Environment Manager%s\n" "${CLR_BOLD}${CLR_WHITE}" "${CLR_RESET}"
     if [[ "$LOG_FILE_WRITABLE" -eq 1 ]]; then
         printf " %s* Log: %s%s\n" "${CLR_DIM}" "$LOG_FILE" "${CLR_RESET}"
     fi
     printf "================================================================================\n\n"
+}
+
+print_toolchain_overview() {
+    local os_str="$1"
+    local arch_str="$2"
+    local shell_str="$3"
+
+    printf "%s--------------------------------------------------------------------------------%s\n" "${CLR_CYAN}" "${CLR_RESET}"
+    printf " %sTarget System:%s %s (%s)  |  %sShell:%s %s\n" "${CLR_BOLD}" "${CLR_RESET}" "$os_str" "$arch_str" "${CLR_BOLD}" "${CLR_RESET}" "$shell_str"
+    printf "%s--------------------------------------------------------------------------------%s\n" "${CLR_CYAN}" "${CLR_RESET}"
+    printf " %sExisting Toolchain Status:%s\n" "${CLR_BOLD}" "${CLR_RESET}"
+
+    if [[ "${DETECTED_JDK_VALID:-0}" -eq 1 ]]; then
+        printf "   %s[✓] Java JDK       :%s %s %s(Reusing)%s\n" "${CLR_GREEN}" "${CLR_RESET}" "${DETECTED_JDK_VER}" "${CLR_DIM}" "${CLR_RESET}"
+    else
+        printf "   %s[○] Java JDK       :%s Not found %s(Will install Temurin %s)%s\n" "${CLR_CYAN}" "${CLR_RESET}" "${CLR_DIM}" "${JDK_VERSION:-17}" "${CLR_RESET}"
+    fi
+
+    if [[ "${DETECTED_ANDROID_VALID:-0}" -eq 1 ]]; then
+        printf "   %s[✓] Android SDK    :%s %s %s(Reusing)%s\n" "${CLR_GREEN}" "${CLR_RESET}" "${DETECTED_ANDROID_HOME}" "${CLR_DIM}" "${CLR_RESET}"
+    else
+        printf "   %s[○] Android SDK    :%s Not found %s(Will install cmdline-tools & API %s)%s\n" "${CLR_CYAN}" "${CLR_RESET}" "${CLR_DIM}" "${ANDROID_API:-36}" "${CLR_RESET}"
+    fi
+
+    if [[ "${DETECTED_GRADLE_VALID:-0}" -eq 1 ]]; then
+        printf "   %s[✓] Gradle         :%s %s %s(Reusing)%s\n" "${CLR_GREEN}" "${CLR_RESET}" "${DETECTED_GRADLE_VER}" "${CLR_DIM}" "${CLR_RESET}"
+    else
+        printf "   %s[○] Gradle         :%s Not installed %s(Projects with './gradlew' don't require this)%s\n" "${CLR_CYAN}" "${CLR_RESET}" "${CLR_DIM}" "${CLR_RESET}"
+    fi
+
+    if [[ "${DETECTED_FLUTTER_VALID:-0}" -eq 1 ]]; then
+        printf "   %s[✓] Flutter SDK    :%s %s %s(Reusing)%s\n" "${CLR_GREEN}" "${CLR_RESET}" "${DETECTED_FLUTTER_VER}" "${CLR_DIM}" "${CLR_RESET}"
+    else
+        printf "   %s[○] Flutter SDK    :%s Not found %s(Will install %s channel)%s\n" "${CLR_CYAN}" "${CLR_RESET}" "${CLR_DIM}" "${FLUTTER_CHANNEL:-stable}" "${CLR_RESET}"
+    fi
+    printf "%s--------------------------------------------------------------------------------%s\n\n" "${CLR_CYAN}" "${CLR_RESET}"
 }
 
 # ------------------------------------------------------------------------------
@@ -226,12 +261,13 @@ prompt_confirm() {
 
 prompt_mode_selection() {
     local __mode_var="$1"
-    printf "%sSelect Installation Mode:%s\n" "${CLR_BOLD}" "${CLR_RESET}"
-    printf "  %s[1] Recommended (Default)%s  - Quick setup with verified LTS toolchain\n" "${CLR_GREEN}${CLR_BOLD}" "${CLR_RESET}"
-    printf "                                (JDK %s, Android API %s, Build-Tools %s, Flutter %s)\n" \
-        "${JDK_VERSION:-17}" "${ANDROID_API:-36}" "${BUILD_TOOLS_VERSION:-36.0.0}" "${FLUTTER_CHANNEL:-stable}"
-    printf "  %s[2] Custom Setup%s           - Configure JDK, Android APIs, NDK, CMake, Gradle, Flutter\n" "${CLR_CYAN}${CLR_BOLD}" "${CLR_RESET}"
-    echo ""
+    printf "%sWhat would you like to do?%s\n\n" "${CLR_BOLD}" "${CLR_RESET}"
+    printf "  %s[1] Quick Setup (Recommended)%s  - Setup Flutter & Android toolchain automatically\n" "${CLR_GREEN}${CLR_BOLD}" "${CLR_RESET}"
+    printf "                                      (Reuses existing tools; installs only missing components)\n"
+    printf "  %s[2] Custom Setup%s               - Choose custom JDK, Android API, NDK, CMake, Flutter\n" "${CLR_CYAN}${CLR_BOLD}" "${CLR_RESET}"
+    printf "  %s[3] Run Doctor / Troubleshoot%s  - Analyze setup health, accept licenses & repair issues\n" "${CLR_YELLOW}${CLR_BOLD}" "${CLR_RESET}"
+    printf "  %s[4] Clean Uninstall%s            - Revert shell environment and remove managed SDKs\n" "${CLR_RED}${CLR_BOLD}" "${CLR_RESET}"
+    printf "  %s[q] Exit%s\n\n" "${CLR_DIM}" "${CLR_RESET}"
 
     local choice=""
     printf "  %s?%s Enter choice [%s1%s]: " "${CLR_CYAN}" "${CLR_RESET}" "${CLR_BOLD}" "${CLR_RESET}"
@@ -241,9 +277,25 @@ prompt_mode_selection() {
         choice="1"
     fi
 
-    if [[ "$choice" != "2" ]]; then
-        choice="1"
-    fi
+    case "$choice" in
+        2)
+            choice="2"
+            ;;
+        3|[dD]|[dD]octor)
+            choice="doctor"
+            ;;
+        4|[uU]|[uU]ninstall)
+            choice="uninstall"
+            ;;
+        [qQ]|[qQ]uit|[eE]xit)
+            printf "\nExiting Flutter-Kick.\n"
+            exit 0
+            ;;
+        *)
+            choice="1"
+            ;;
+    esac
+
     eval "$__mode_var=\"$choice\""
 }
 

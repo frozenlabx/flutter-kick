@@ -125,7 +125,12 @@ detect_existing_jdk() {
 
     # 6. Binary on PATH
     if command -v java >/dev/null 2>&1; then
-        candidate_bins+=("$(command -v java)")
+        local j_bin
+        j_bin="$(command -v java)"
+        # On macOS, /usr/bin/java is an Apple stub that can launch GUI alert if no JVM is configured
+        if [[ "$j_bin" != "/usr/bin/java" || "$(uname -s)" != "Darwin" ]]; then
+            candidate_bins+=("$j_bin")
+        fi
     fi
 
     if [[ ${#candidate_homes[@]} -gt 0 ]]; then
